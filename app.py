@@ -1464,24 +1464,28 @@ def create_app(config_name=None):
 
         # If download=true, proceed with file generation and download
         try:
-            # Query all read logs with related data
+            # Query all read logs with related data - using explicit aliases to avoid parameter conflicts
+            from sqlalchemy.orm import aliased
+            update_alias = aliased(Update)
+            user_alias = aliased(User)
+
             read_logs_query = db.session.query(
                 ReadLog.id,
                 ReadLog.timestamp,
                 ReadLog.guest_name,
                 ReadLog.ip_address,
                 ReadLog.user_agent,
-                Update.id.label('update_id'),
-                Update.message.label('update_message'),
-                Update.name.label('update_author'),
-                Update.process.label('update_process'),
-                Update.timestamp.label('update_created'),
-                User.display_name.label('reader_name'),
-                User.username.label('reader_username')
+                update_alias.id.label('update_id'),
+                update_alias.message.label('update_message'),
+                update_alias.name.label('update_author'),
+                update_alias.process.label('update_process'),
+                update_alias.timestamp.label('update_created'),
+                user_alias.display_name.label('reader_name'),
+                user_alias.username.label('reader_username')
             ).outerjoin(
-                Update, ReadLog.update_id == Update.id
+                update_alias, ReadLog.update_id == update_alias.id
             ).outerjoin(
-                User, ReadLog.user_id == User.id
+                user_alias, ReadLog.user_id == user_alias.id
             ).order_by(ReadLog.timestamp.desc())
 
             # Execute query and get results
@@ -1545,7 +1549,7 @@ def create_app(config_name=None):
             # Create Excel file in memory
             output = BytesIO()
 
-            # Query activity logs
+            # Query activity logs - using explicit aliases to avoid parameter conflicts
             activity_logs_query = db.session.query(
                 ActivityLog.id,
                 ActivityLog.action,
@@ -1556,10 +1560,10 @@ def create_app(config_name=None):
                 ActivityLog.ip_address,
                 ActivityLog.user_agent,
                 ActivityLog.details,
-                User.display_name.label('user_name'),
-                User.username.label('username')
+                user_alias.display_name.label('user_name'),
+                user_alias.username.label('username')
             ).outerjoin(
-                User, ActivityLog.user_id == User.id
+                user_alias, ActivityLog.user_id == user_alias.id
             ).order_by(ActivityLog.timestamp.desc())
 
             activity_results = activity_logs_query.all()
@@ -1591,14 +1595,14 @@ def create_app(config_name=None):
 
             activity_df = pd.DataFrame(activity_data)
 
-            # Query registered users for authority tracking
+            # Query registered users for authority tracking - using explicit aliases to avoid parameter conflicts
             users_query = db.session.query(
-                User.id,
-                User.username,
-                User.display_name,
-                User.email,
-                User.role
-            ).order_by(User.id)
+                user_alias.id,
+                user_alias.username,
+                user_alias.display_name,
+                user_alias.email,
+                user_alias.role
+            ).order_by(user_alias.id)
 
             users_results = users_query.all()
             users_data = []
@@ -1889,26 +1893,26 @@ def create_app(config_name=None):
     def archives_page():
         """Display archived items management page."""
         try:
-            # Get archived items with user info
+            # Get archived items with user info - using explicit aliases to avoid parameter conflicts
             archived_updates = db.session.query(
                 ArchivedUpdate,
-                User.display_name.label('archived_by_name')
+                user_alias.display_name.label('archived_by_name')
             ).outerjoin(
-                User, ArchivedUpdate.archived_by == User.id
+                user_alias, ArchivedUpdate.archived_by == user_alias.id
             ).order_by(ArchivedUpdate.archived_at.desc()).all()
 
             archived_sops = db.session.query(
                 ArchivedSOPSummary,
-                User.display_name.label('archived_by_name')
+                user_alias.display_name.label('archived_by_name')
             ).outerjoin(
-                User, ArchivedSOPSummary.archived_by == User.id
+                user_alias, ArchivedSOPSummary.archived_by == user_alias.id
             ).order_by(ArchivedSOPSummary.archived_at.desc()).all()
 
             archived_lessons = db.session.query(
                 ArchivedLessonLearned,
-                User.display_name.label('archived_by_name')
+                user_alias.display_name.label('archived_by_name')
             ).outerjoin(
-                User, ArchivedLessonLearned.archived_by == User.id
+                user_alias, ArchivedLessonLearned.archived_by == user_alias.id
             ).order_by(ArchivedLessonLearned.archived_at.desc()).all()
 
             return render_template('archives.html',
