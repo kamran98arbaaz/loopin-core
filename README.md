@@ -343,3 +343,5 @@ For support and questions, please contact the development team.
 ---
 
 **LoopIn 2025** - Streamlining team communication and knowledge management with enterprise-grade reliability.
+#   l o o p i n - n u c l e u s  
+ 
