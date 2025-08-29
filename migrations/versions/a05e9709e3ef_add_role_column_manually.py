@@ -17,14 +17,10 @@ depends_on = None
 
 
 def upgrade():
+    # Role column already exists in the database, skip this migration
     pass
 
 
 def downgrade():
+    # Don't drop the role column as it's needed by the application
     pass
-
-def upgrade():
-    op.add_column('users', sa.Column('role', sa.String(length=32), nullable=True))
-
-def downgrade():
-    op.drop_column('users', 'role')

@@ -17,8 +17,10 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('users', sa.Column('role', sa.String(length=32), nullable=False, server_default='user'))
+    # Role column already exists in the database, skip this migration
+    pass
 
 def downgrade():
-    op.drop_column('users', 'role')
+    # Don't drop the role column as it's needed by the application
+    pass
 
