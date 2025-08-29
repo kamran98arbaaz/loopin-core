@@ -24,7 +24,8 @@ def upgrade():
                existing_type=sa.VARCHAR(length=36),
                type_=sa.Integer(),
                existing_nullable=False,
-               autoincrement=True)
+               autoincrement=True,
+               postgresql_using='id::integer')
         batch_op.alter_column('password_hash',
                existing_type=sa.VARCHAR(length=255),
                type_=sa.String(length=128),
@@ -32,14 +33,14 @@ def upgrade():
         batch_op.drop_constraint(batch_op.f('users_name_key'), type_='unique')
         batch_op.create_unique_constraint(None, ['username'])
         batch_op.drop_column('name')
-        batch_op.drop_column('role')
+        # Note: role column may not exist in fresh databases, skip dropping it
 
     # ### end Alembic commands ###
 
 
 def downgrade():
     with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('role', sa.VARCHAR(length=32), server_default=sa.text("'user'::character varying"), nullable=False))
+        # Note: role column may not exist in fresh databases, skip adding it back
         batch_op.add_column(sa.Column('name', sa.VARCHAR(length=100), nullable=False))
         batch_op.drop_constraint(None, type_='unique')
         batch_op.create_unique_constraint(batch_op.f('users_name_key'), ['name'], postgresql_nulls_not_distinct=False)

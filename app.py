@@ -191,6 +191,36 @@ def create_app(config_name=None):
         if os.getenv("FLASK_ENV") == "development":
             print("Database configured successfully")
 
+        # Verify database connection and table reflection
+        try:
+            # Test basic connection
+            db.session.execute(text("SELECT 1"))
+            logger.info("✅ Database connection successful")
+
+            # Check if tables exist
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            expected_tables = ['users', 'updates', 'read_logs', 'activity_logs', 'archived_updates', 'archived_sop_summaries', 'archived_lessons_learned', 'sop_summaries', 'lessons_learned']
+
+            logger.info(f"📋 Existing tables: {existing_tables}")
+            logger.info(f"🎯 Expected tables: {expected_tables}")
+
+            missing_tables = [table for table in expected_tables if table not in existing_tables]
+            if missing_tables:
+                logger.warning(f"⚠️ Missing tables: {missing_tables}")
+            else:
+                logger.info("✅ All expected tables are present")
+
+            # Test a simple query on users table
+            user_count = User.query.count()
+            logger.info(f"👥 Users table has {user_count} records")
+
+        except Exception as e:
+            logger.error(f"❌ Database verification failed: {e}")
+            if os.getenv("FLASK_ENV") == "development":
+                print(f"❌ Database verification failed: {e}")
+
     # Activity Logging Helper
     def log_activity(action, entity_type, entity_id, entity_title=None, details=None):
         """Log user activity for audit trail"""

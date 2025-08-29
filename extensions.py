@@ -17,7 +17,9 @@ socketio = SocketIO(
     # Railway-optimized CORS configuration
     cors_allowed_origins=[
         "https://loopin-home-production.up.railway.app",
+        "https://loopin-core.onrender.com",
         "https://*.up.railway.app",
+        "https://*.onrender.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://localhost:5000",
@@ -63,7 +65,9 @@ socketio = SocketIO(
     engineio_cookie=None,
     engineio_cors_allowed_origins=[
         "https://loopin-home-production.up.railway.app",
+        "https://loopin-core.onrender.com",
         "https://*.up.railway.app",
+        "https://*.onrender.com",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "http://localhost:5000",
