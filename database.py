@@ -89,6 +89,18 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
                 except Exception as dispose_e:
                     logger.error(f"Error disposing engine: {dispose_e}")
 
+                # For SQLite lock errors, also try to remove the lock file if it exists
+                try:
+                    import os
+                    db_path = db.engine.url.database
+                    if db_path and os.path.exists(db_path):
+                        lock_file = db_path + '-lock'
+                        if os.path.exists(lock_file):
+                            os.remove(lock_file)
+                            logger.info(f"Removed SQLite lock file: {lock_file}")
+                except Exception as lock_e:
+                    logger.error(f"Error removing lock file: {lock_e}")
+
             try:
                 session.rollback()
             except Exception:

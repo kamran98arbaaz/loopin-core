@@ -308,14 +308,36 @@ def create_app(config_name=None):
             except Exception as cleanup_e:
                 logger.error(f"Error during cleanup: {cleanup_e}")
 
-        # If database verification failed, don't continue with app startup
+        # If database verification failed, try to create tables
         if not db_verification_success:
-            logger.error("❌ Database verification failed - aborting app startup")
-            # In production, we might want to be more graceful
-            if os.getenv("FLASK_ENV") == "production":
-                logger.warning("⚠️ Continuing with app startup despite database issues (production mode)")
-            else:
-                raise RuntimeError("Database verification failed - cannot start application")
+            logger.warning("❌ Database verification failed - attempting to create tables")
+            try:
+                # Force table creation
+                db.create_all()
+                logger.info("✅ Tables created successfully after verification failure")
+
+                # Re-verify after table creation
+                inspector = inspect(db.engine)
+                existing_tables = inspector.get_table_names()
+                expected_tables = ['users', 'updates', 'read_logs', 'activity_logs', 'archived_updates', 'archived_sop_summaries', 'archived_lessons_learned', 'sop_summaries', 'lessons_learned']
+
+                missing_tables = [table for table in expected_tables if table not in existing_tables]
+                if missing_tables:
+                    logger.error(f"❌ Still missing tables after creation attempt: {missing_tables}")
+                    if os.getenv("FLASK_ENV") == "production":
+                        logger.warning("⚠️ Continuing with app startup despite missing tables (production mode)")
+                    else:
+                        raise RuntimeError(f"Database table creation failed - missing: {missing_tables}")
+                else:
+                    logger.info("✅ All tables verified after creation")
+                    db_verification_success = True
+
+            except Exception as create_e:
+                logger.error(f"❌ Failed to create tables: {create_e}")
+                if os.getenv("FLASK_ENV") == "production":
+                    logger.warning("⚠️ Continuing with app startup despite table creation failure (production mode)")
+                else:
+                    raise RuntimeError(f"Database table creation failed: {create_e}")
 
     # Activity Logging Helper
     def log_activity(action, entity_type, entity_id, entity_title=None, details=None):
@@ -1091,29 +1113,63 @@ def create_app(config_name=None):
     @app.route("/api/latest-update-time")
     def api_latest_update_time():
         """API endpoint to get the timestamp of the most recent update"""
+        session = None
         try:
-            with db_session() as session:
-                latest_update = session.query(Update).order_by(Update.timestamp.desc()).first()
-                if latest_update:
-                    # Ensure timezone is properly handled
-                    timestamp = ensure_timezone(latest_update.timestamp, UTC)
+            # Use a more robust session management approach
+            session = db.session()
 
-                    return jsonify({
-                        "latest_timestamp": timestamp.isoformat(),
-                        "success": True
-                    })
-                else:
-                    return jsonify({
-                        "latest_timestamp": None,
-                        "success": True
-                    })
+            # Check if the updates table exists before querying
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+
+            if 'updates' not in existing_tables:
+                logger.warning("Updates table does not exist, returning null timestamp")
+                return jsonify({
+                    "latest_timestamp": None,
+                    "success": True,
+                    "message": "Updates table not found"
+                })
+
+            latest_update = session.query(Update).order_by(Update.timestamp.desc()).first()
+
+            if latest_update:
+                # Ensure timezone is properly handled
+                timestamp = ensure_timezone(latest_update.timestamp, UTC)
+                result = {
+                    "latest_timestamp": timestamp.isoformat(),
+                    "success": True
+                }
+            else:
+                result = {
+                    "latest_timestamp": None,
+                    "success": True
+                }
+
+            session.commit()  # Explicitly commit the transaction
+            return jsonify(result)
+
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
+            # Try to rollback if there's an active transaction
+            if session:
+                try:
+                    session.rollback()
+                except Exception as rollback_e:
+                    logger.error(f"Error rolling back session: {rollback_e}")
+
             return jsonify({
                 "latest_timestamp": None,
                 "success": False,
                 "error": str(e)
             }), 500
+        finally:
+            # Always close the session
+            if session:
+                try:
+                    session.close()
+                except Exception as close_e:
+                    logger.error(f"Error closing session: {close_e}")
     
     # New routes for SOP Summaries
     @app.route("/sop_summaries")
