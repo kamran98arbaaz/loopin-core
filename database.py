@@ -74,13 +74,25 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
             logger.error(f"Error type: {type(e).__name__}")
             if hasattr(e, 'orig'):
                 logger.error(f"Original error: {e.orig}")
+
+            # Enhanced lock-related error handling
+            error_str = str(e).lower()
+            if ('lock' in error_str or 'deadlock' in error_str or
+                'cannot notify on un-acquired lock' in error_str or
+                'advisory' in error_str):
+                logger.warning("Lock-related error detected, performing comprehensive cleanup")
+                cleanup_db()
+                # Force engine disposal to clear any stale connections
+                try:
+                    db.engine.dispose()
+                    logger.info("Database engine disposed due to lock error")
+                except Exception as dispose_e:
+                    logger.error(f"Error disposing engine: {dispose_e}")
+
             try:
                 session.rollback()
             except Exception:
                 pass
-            if 'lock' in str(e).lower() or 'deadlock' in str(e).lower():
-                logger.warning("Lock-related error detected, cleaning up session")
-                cleanup_db()
             raise
         finally:
             logger.debug("Closing database session")
@@ -109,6 +121,23 @@ def cleanup_db():
     except Exception as e:
         current_app.logger.error(f"Error cleaning up database session: {str(e)}")
 
+def validate_connection_before_operation():
+    """Validate database connection before performing critical operations."""
+    try:
+        # Quick connection test
+        with get_connection_with_retry() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error(f"Connection validation failed: {e}")
+        # Try to recover by disposing the engine
+        try:
+            db.engine.dispose()
+            logger.info("Engine disposed due to connection validation failure")
+        except Exception as dispose_e:
+            logger.error(f"Error disposing engine: {dispose_e}")
+        return False
+
 # SSL context configuration removed - psycopg2 handles SSL through connection parameters
 
 def test_ssl_connection(connection=None):
@@ -125,10 +154,19 @@ def test_ssl_connection(connection=None):
             logger.info("Not using PostgreSQL, SSL test skipped")
             return True
 
-        # Test basic connection
+        # Test basic connection with transaction handling
         logger.info("Testing basic PostgreSQL connection...")
-        connection.execute(text("SELECT version()"))
-        logger.info("Basic connection successful")
+        try:
+            connection.execute(text("SELECT version()"))
+            logger.info("Basic connection successful")
+        except Exception as conn_e:
+            logger.error(f"Basic connection failed: {conn_e}")
+            # Try to rollback any aborted transaction
+            try:
+                connection.rollback()
+            except:
+                pass
+            return False
 
         # Test SSL-specific query (some PostgreSQL instances may not have sslinfo extension)
         logger.info("Testing SSL connection details...")
@@ -174,6 +212,14 @@ def test_ssl_connection(connection=None):
         logger.error(f"Error type: {type(e).__name__}")
         if hasattr(e, 'orig'):
             logger.error(f"Original error: {e.orig}")
+            # Handle transaction abortion errors specifically
+            if 'InFailedSqlTransaction' in str(type(e.orig)) or 'current transaction is aborted' in str(e.orig):
+                logger.warning("Transaction abortion detected, attempting recovery")
+                try:
+                    connection.rollback()
+                    logger.info("Transaction rolled back successfully")
+                except Exception as rollback_e:
+                    logger.error(f"Failed to rollback transaction: {rollback_e}")
         return False
     except Exception as e:
         logger.error(f"Unexpected error during SSL test: {str(e)}")
@@ -181,7 +227,42 @@ def test_ssl_connection(connection=None):
     finally:
         # Only close if we created the connection
         if connection is not None and connection is not db.session:
-            connection.close()
+            try:
+                connection.close()
+            except Exception as close_e:
+                logger.warning(f"Error closing connection: {close_e}")
+
+def check_connection_health(connection):
+    """Check if a database connection is healthy and can execute queries."""
+    try:
+        # Test with a simple query
+        result = connection.execute(text("SELECT 1 as health_check"))
+        row = result.fetchone()
+        return row and row.health_check == 1
+    except Exception as e:
+        logger.warning(f"Connection health check failed: {e}")
+        return False
+
+def get_connection_with_retry(max_retries=3):
+    """Get a healthy database connection with retry logic."""
+    for attempt in range(max_retries):
+        try:
+            connection = db.engine.connect()
+            if check_connection_health(connection):
+                return connection
+            else:
+                connection.close()
+                if attempt < max_retries - 1:
+                    logger.warning(f"Connection health check failed, retrying (attempt {attempt + 1})")
+                    time.sleep(0.5 * (attempt + 1))  # Progressive delay
+                else:
+                    raise Exception("Could not obtain healthy connection after retries")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                time.sleep(0.5 * (attempt + 1))
+            else:
+                raise
 
 def health_check() -> bool:
     """Check database connectivity with improved error handling for sync workers."""
@@ -213,8 +294,8 @@ def health_check() -> bool:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # Use a new connection for testing to avoid session issues
-                with db.engine.connect() as connection:
+                # Use a healthy connection for testing
+                with get_connection_with_retry() as connection:
                     result = connection.execute(text("SELECT 1"))
                     result.fetchone()  # Consume the result
                 logger.info("Database connection successful")

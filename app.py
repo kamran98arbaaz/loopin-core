@@ -280,19 +280,21 @@ def create_app(config_name=None):
         # Verify database connection and table reflection
         db_verification_success = False
         try:
-            # Test basic connection
-            db.session.execute(text("SELECT 1"))
-            logger.info("✅ Database connection successful")
+            # Test basic connection with health check
+            from database import get_connection_with_retry
+            with get_connection_with_retry() as test_conn:
+                test_conn.execute(text("SELECT 1"))
+            logger.info("Database connection successful")
 
             # Test SSL connection if using PostgreSQL (in separate session to avoid transaction abortion)
             ssl_test_result = False
             try:
                 from database import test_ssl_connection
-                # Create a new session for SSL testing to avoid contaminating the main session
-                with db.engine.connect() as test_conn:
-                    ssl_test_result = test_ssl_connection()
+                # Create a new healthy connection for SSL testing
+                with get_connection_with_retry() as test_conn:
+                    ssl_test_result = test_ssl_connection(test_conn)
                 if ssl_test_result:
-                    logger.info("✅ SSL connection test passed")
+                    logger.info("SSL connection test passed")
                 else:
                     logger.warning("⚠️ SSL connection test failed - this may cause issues")
             except Exception as ssl_e:
@@ -304,18 +306,21 @@ def create_app(config_name=None):
             existing_tables = inspector.get_table_names()
             expected_tables = ['users', 'updates', 'read_logs', 'activity_logs', 'archived_updates', 'archived_sop_summaries', 'archived_lessons_learned', 'sop_summaries', 'lessons_learned']
 
-            logger.info(f"📋 Existing tables: {existing_tables}")
-            logger.info(f"🎯 Expected tables: {expected_tables}")
+            logger.info(f"Existing tables: {existing_tables}")
+            logger.info(f"Expected tables: {expected_tables}")
 
             missing_tables = [table for table in expected_tables if table not in existing_tables]
             if missing_tables:
-                logger.warning(f"⚠️ Missing tables: {missing_tables}")
+                logger.warning(f"Missing tables: {missing_tables}")
             else:
-                logger.info("✅ All expected tables are present")
+                logger.info("All expected tables are present")
 
-            # Test a simple query on users table
-            user_count = User.query.count()
-            logger.info(f"👥 Users table has {user_count} records")
+            # Test a simple query on users table with connection health check
+            try:
+                user_count = User.query.count()
+                logger.info(f"Users table has {user_count} records")
+            except Exception as query_e:
+                logger.warning(f"⚠️ User count query failed, but continuing: {query_e}")
 
             db_verification_success = True
 
@@ -324,12 +329,15 @@ def create_app(config_name=None):
             if os.getenv("FLASK_ENV") == "development":
                 print(f"❌ Database verification failed: {e}")
 
-            # Clean up the session on error
+            # Enhanced cleanup on error
             try:
                 db.session.rollback()
                 db.session.close()
-            except:
-                pass
+                # Force engine disposal to clear any problematic connections
+                db.engine.dispose()
+                logger.info("Database engine disposed due to verification failure")
+            except Exception as cleanup_e:
+                logger.error(f"Error during cleanup: {cleanup_e}")
 
         # If database verification failed, don't continue with app startup
         if not db_verification_success:
@@ -589,6 +597,15 @@ def create_app(config_name=None):
     def health():
         """Optimized health check endpoint"""
         try:
+            # Validate connection before health check
+            from database import validate_connection_before_operation
+            if not validate_connection_before_operation():
+                return jsonify({
+                    "status": "error",
+                    "message": "Database connection validation failed",
+                    "timestamp": now_utc().isoformat()
+                }), 500
+
             # Test database connection efficiently
             db.session.execute(text("SELECT 1"))
 
@@ -944,6 +961,12 @@ def create_app(config_name=None):
         processes = ["ABC", "XYZ", "AB"]
 
         if request.method == "POST":
+            # Validate connection before critical operation
+            from database import validate_connection_before_operation
+            if not validate_connection_before_operation():
+                flash("⚠️ Database connection issue. Please try again.")
+                return redirect(url_for("post_update"))
+
             message = request.form.get("message", "").strip()
             selected_process = request.form.get("process")
             name = inject_current_user()["current_user"].display_name
@@ -993,8 +1016,9 @@ def create_app(config_name=None):
                     if os.getenv("FLASK_ENV") == "development":
                         print(f"❌ Socket.IO broadcast failed: {e}")
 
-            except Exception:
+            except Exception as e:
                 db.session.rollback()
+                logger.error(f"Failed to post update: {e}")
                 flash("⚠️ Failed to post update.")
             return redirect(url_for("show_updates"))
 
