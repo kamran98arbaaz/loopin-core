@@ -9,7 +9,7 @@
       <i class="fas fa-download"></i>
       Export Read Logs
     </h1>
-    <p class="page-subtitle">Download comprehensive analytics of all read logs in Excel format</p>
+    <p class="page-subtitle">Download comprehensive analytics of all read logs in lightweight CSV format</p>
   </div>
 
   <div class="export-card">
@@ -53,7 +53,7 @@
     <div class="export-actions">
       <a href="{{ url_for('export_readlogs') }}?download=true" class="btn btn-primary btn-large export-btn">
         <i class="fas fa-download"></i>
-        Download Excel File
+        Download CSV File
       </a>
 
       <a href="{{ url_for('home') }}" class="btn btn-secondary">
@@ -94,6 +94,7 @@
       </div>
     </details>
   </div>
+
 </div>
 
 <style>
@@ -307,4 +308,5 @@ function confirmReset() {
   );
 }
 </script>
+
 {% endblock %}

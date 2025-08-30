@@ -24,9 +24,9 @@ services:
     autoDeploy: true
     scaling:
       minInstances: 1
-      maxInstances: 3
-      targetMemoryPercent: 80
-      targetCPUPercent: 80
+      maxInstances: 1  # Single instance for free tier
+      targetMemoryPercent: 60  # Lower threshold for free tier
+      targetCPUPercent: 60
     headers:
       - path: /*
         name: X-Frame-Options
@@ -41,11 +41,11 @@ services:
       - type: rewrite
         source: /*
         destination: /
-    # Disk configuration
+    # Disk configuration optimized for free tier
     disk:
       name: data
       mountPath: /data
-      sizeGB: 1
+      sizeGB: 0.25  # 250MB for free tier
     # Custom domain configuration (uncomment and modify as needed)
     # domains:
     #   - domain: your-domain.com
@@ -53,16 +53,16 @@ services:
     #   - domain: www.your-domain.com
     #     type: REDIRECT
 
-  # Database service
+  # Database service optimized for free tier
   - type: pserv
     name: loopin-db
     env: postgres
-    plan: standard
+    plan: free  # Use free tier database
     ipAllowList: []  # Only allow internal connections
     disk:
       name: data
       mountPath: /var/lib/postgresql/data
-      sizeGB: 10
+      sizeGB: 0.25  # 250MB for free tier
 
 # Global environment group
 envVarGroups:
@@ -81,11 +81,4 @@ envVarGroups:
       - key: MAX_CONTENT_LENGTH
         value: "16777216"  # 16MB in bytes
 
-# Cron jobs for maintenance tasks
-cron:
-  - name: database-backup
-    schedule: "0 */6 * * *"  # Every 6 hours
-    command: python scheduled_backup.py
-    envVars:
-      - key: BACKUP_TYPE
-        value: scheduled
+# Cron jobs removed for light version to save resources

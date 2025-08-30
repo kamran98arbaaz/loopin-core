@@ -1,27 +1,22 @@
-# Core Flask dependencies (optimized for Railway)
+# Core Flask dependencies (light version for Render free tier)
 Flask==2.3.3
 Flask-Login==0.6.3
 Flask-Migrate==4.1.0
 Flask-SocketIO==5.3.6
 Flask-SQLAlchemy==3.1.1
 
-# Database (memory-optimized)
+# Database (minimal)
 psycopg2-binary==2.9.10
 SQLAlchemy==2.0.42
 alembic==1.16.4
 
 # Web server for production (Render-optimized)
 gunicorn==21.2.0
-# Removed gevent - using sync workers for better SQLAlchemy compatibility
 
 # Essential utilities (minimal)
 python-dotenv==1.1.1
 pytz==2025.2
 requests==2.32.4
-
-# Excel export functionality (optional - can be removed if not needed)
-pandas==2.1.4  # Downgraded for memory
-openpyxl==3.1.2  # Downgraded for memory
 
 # Socket.IO for real-time features (compatible with client v4.7.2)
 python-socketio==5.10.0
@@ -45,13 +40,7 @@ idna==3.10
 python-dateutil==2.9.0.post0
 six==1.16.0
 
-# Numeric computing (required by pandas)
-numpy==1.26.4
-
-# Excel file handling (required by openpyxl)
-et-xmlfile==1.1.0
-
 # Additional utilities
 greenlet==3.1.1
 typing_extensions==4.12.2
-psutil==6.0.0  # Memory monitoring
+

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, current_app, render_template, request, redirect, url_for, flash, session, jsonify, send_file
+from flask import Flask, current_app, render_template, request, redirect, url_for, flash, session, jsonify, send_file, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text, func, or_
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -29,40 +29,10 @@ from io import BytesIO
 import sys
 import subprocess
 from pathlib import Path
+import pandas as pd
 
-# Add system Python site-packages to path if needed (for environments with path issues)
-try:
-    import site
-    # Get all site-packages directories and add them to path if not already present
-    site_packages_dirs = site.getsitepackages()
-    for site_dir in site_packages_dirs:
-        if site_dir not in sys.path and os.path.exists(site_dir):
-            sys.path.insert(0, site_dir)
-except Exception:
-    # Fallback: try common site-packages locations
-    import platform
-    python_version = f"Python{sys.version_info.major}{sys.version_info.minor}"
-    if platform.system() == "Windows":
-        possible_paths = [
-            os.path.join(os.path.dirname(sys.executable), "Lib", "site-packages"),
-            os.path.expanduser(f"~\\AppData\\Local\\Programs\\Python\\{python_version}\\Lib\\site-packages"),
-            os.path.expanduser(f"~\\AppData\\Roaming\\Python\\Python{sys.version_info.major}{sys.version_info.minor}\\site-packages")
-        ]
-        for path in possible_paths:
-            if path not in sys.path and os.path.exists(path):
-                sys.path.insert(0, path)
-                break
-
-# Import pandas and openpyxl with error handling
-try:
-    import pandas as pd
-    import openpyxl
-    EXCEL_EXPORT_AVAILABLE = True
-except ImportError as e:
-    # Only print warning in development mode
-    if os.getenv('FLASK_ENV') == 'development':
-        print(f"Warning: Excel export dependencies not available: {e}")
-    EXCEL_EXPORT_AVAILABLE = False
+# Lightweight CSV export available for light version
+EXCEL_EXPORT_AVAILABLE = True  # CSV export implemented for light version
 
 # Load .env
 load_dotenv()
@@ -615,35 +585,7 @@ def create_app(config_name=None):
                 "timestamp": now_utc().isoformat()
             }
 
-            # Optional memory monitoring (only if needed)
-            if os.getenv("DETAILED_HEALTH_CHECK") == "true":
-                memory_info = {"available": False}
-                try:
-                    import psutil
-                    process = psutil.Process(os.getpid())
-                    memory_mb = process.memory_info().rss / 1024 / 1024
-                    memory_info = {
-                        "available": True,
-                        "usage_mb": round(memory_mb, 2),
-                        "usage_percent": round(process.memory_percent(), 2)
-                    }
-                    out["memory"] = memory_info
-                except ImportError:
-                    pass
-
-            # Check Redis if configured (only if needed)
-            if os.getenv("DETAILED_HEALTH_CHECK") == "true":
-                redis_url = os.getenv("REDIS_URL")
-                if redis_url:
-                    try:
-                        import redis
-                        r = redis.from_url(redis_url)
-                        r.ping()
-                        out["redis"] = "connected"
-                    except Exception as e:
-                        out["redis"] = f"error: {str(e)}"
-                else:
-                    out["redis"] = "not_configured"
+            # Memory and Redis monitoring removed for light version
 
             return jsonify(out), 200
         except Exception as e:
@@ -653,83 +595,9 @@ def create_app(config_name=None):
                 "timestamp": now_utc().isoformat()
             }), 500
 
-    try:
-        from prometheus_client import CollectorRegistry, Gauge, generate_latest, CONTENT_TYPE_LATEST
-        registry = CollectorRegistry()
-        g_uptime = Gauge('app_uptime_seconds', 'App uptime in seconds', registry=registry)
-        g_updates = Gauge('updates_total', 'Total updates', registry=registry)
-        g_redis = Gauge('redis_up', 'Redis up (1/0)', registry=registry)
+    # Metrics functionality removed for light version
 
-        @app.route('/metrics')
-        def metrics():
-            try:
-                g_uptime.set(int(time.time() - APP_START))
-            except Exception:
-                g_uptime.set(0)
-            try:
-                g_updates.set(int(Update.query.count()))
-            except Exception:
-                g_updates.set(0)
-            # Only check Redis if configured to avoid performance issues
-            redis_url = os.getenv("REDIS_URL")
-            if redis_url:
-                try:
-                    from api.updates import is_redis_healthy
-                    g_redis.set(1 if is_redis_healthy() else 0)
-                except Exception:
-                    g_redis.set(0)
-            else:
-                g_redis.set(0)  # Redis not configured
-            data = generate_latest(registry)
-            return (data, 200, {'Content-Type': CONTENT_TYPE_LATEST})
-    except Exception:
-        # If prometheus_client not available, keep the small plaintext /metrics
-        @app.route('/metrics')
-        def metrics_plain():
-            lines = []
-            try:
-                uptime = time.time() - APP_START
-                lines.append(f"app_uptime_seconds {int(uptime)}")
-            except Exception:
-                lines.append("app_uptime_seconds 0")
-            try:
-                total = Update.query.count()
-                lines.append(f"updates_total {int(total)}")
-            except Exception:
-                lines.append("updates_total 0")
-            # Only check Redis if configured to avoid performance issues
-            redis_url = os.getenv("REDIS_URL")
-            if redis_url:
-                try:
-                    from api.updates import is_redis_healthy
-                    ok = is_redis_healthy()
-                    lines.append(f"redis_up {1 if ok else 0}")
-                except Exception:
-                    lines.append("redis_up 0")
-            else:
-                lines.append("redis_up 0")  # Redis not configured
-            return ("\n".join(lines), 200, {"Content-Type": "text/plain; version=0.0.4"})
-
-    @app.route('/health/alert', methods=['POST'])
-    def health_alert():
-        """Trigger a POST to a configured alert webhook with current health status.
-
-        Useful for manual or automated alerting during deployment checks.
-        Configure `HEALTH_ALERT_URL` in the environment to enable.
-        """
-        url = os.getenv('HEALTH_ALERT_URL')
-        if not url:
-            return jsonify({'error': 'no_webhook_configured'}), 400
-        try:
-            import requests
-            # Reuse /health to get current status
-            with app.test_client() as c:
-                resp = c.get('/health')
-                payload = resp.get_json()
-            r = requests.post(url, json=payload, timeout=5)
-            return jsonify({'status': 'sent', 'response_code': r.status_code}), 200
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+    # Health alert functionality removed for light version
 
     @app.route("/lessons_learned/view/<int:lesson_id>")
     @login_required
@@ -1605,321 +1473,366 @@ def create_app(config_name=None):
                 "error": str(e)
             }), 500
 
-    @app.route("/export-readlogs")
+    # Lightweight CSV export functionality for read logs (optimized for Render free tier)
+    @app.route("/export_readlogs")
     @export_required
     def export_readlogs():
-        """Export read logs to Excel file with comprehensive analytics."""
-        # Check if Excel export dependencies are available
-        if not EXCEL_EXPORT_AVAILABLE:
-            flash("❌ Excel export feature is not available. Please install pandas and openpyxl.", "error")
-            return redirect(url_for('home'))
-
-        # Check if this is a download request
+        """Enhanced CSV export with read logs, activity logs, analytics, and metrics"""
+        logger.info("Export read logs function called")
         download = request.args.get('download', 'false').lower() == 'true'
+        logger.info(f"Download parameter: {download}")
 
         if not download:
-            try:
-                # Get summary stats for the export page
-                total_logs = ReadLog.query.count()
-                unique_readers = db.session.query(func.count(func.distinct(ReadLog.user_id))).scalar()
-                date_range = db.session.query(
-                    func.min(ReadLog.timestamp).label('start'),
-                    func.max(ReadLog.timestamp).label('end')
-                ).first()
+            # Show the export page
+            logger.info("Showing export page (not downloading)")
+            return render_template("export_readlogs.html", app_name=app.config["APP_NAME"])
 
-                return render_template('export_readlogs.html',
-                                 app_name=app.config["APP_NAME"],
-                                 total_logs=total_logs,
-                                 unique_readers=unique_readers,
-                                 date_range=date_range)
-            except Exception as e:
-                flash(f"❌ Error getting export statistics: {str(e)}", "error")
-                return redirect(url_for('home'))
+        # Generate enhanced CSV export with streaming and proper app context
+        def generate_csv():
+            import csv
+            import io
 
-        # If download=true, proceed with file generation and download
-        try:
-            # Query all read logs with related data - using explicit aliases to avoid parameter conflicts
-            from sqlalchemy.orm import aliased
-            update_alias = aliased(Update)
-            user_alias = aliased(User)
+            # Memory-efficient CSV generation
+            output = io.StringIO()
+            writer = csv.writer(output)
 
-            read_logs_query = db.session.query(
-                ReadLog.id,
-                ReadLog.timestamp,
-                ReadLog.guest_name,
-                ReadLog.ip_address,
-                ReadLog.user_agent,
-                update_alias.id.label('update_id'),
-                update_alias.message.label('update_message'),
-                update_alias.name.label('update_author'),
-                update_alias.process.label('update_process'),
-                update_alias.timestamp.label('update_created'),
-                user_alias.display_name.label('reader_name'),
-                user_alias.username.label('reader_username')
-            ).outerjoin(
-                update_alias, ReadLog.update_id == update_alias.id
-            ).outerjoin(
-                user_alias, ReadLog.user_id == user_alias.id
-            ).order_by(ReadLog.timestamp.desc())
-
-            # Execute query and get results
-            results = read_logs_query.all()
-
-            # Prepare data for Excel
-            data = []
-            for row in results:
-                # Determine reader name (user or guest)
-                reader_name = row.reader_name if row.reader_name else (row.guest_name or "Anonymous")
-                reader_type = "Registered User" if row.reader_name else "Guest"
-
-                # Format timestamps
-                read_time = row.timestamp.strftime('%Y-%m-%d %H:%M:%S') if row.timestamp else ""
-                update_created_time = row.update_created.strftime('%Y-%m-%d %H:%M:%S') if row.update_created else ""
-
-                # Truncate long messages for readability
-                update_message = (row.update_message[:100] + "...") if row.update_message and len(row.update_message) > 100 else (row.update_message or "")
-
-                data.append({
-                    'Read Log ID': row.id,
-                    'Reader Name': reader_name,
-                    'Reader Type': reader_type,
-                    'Reader Username': row.reader_username or "N/A",
-                    'Read Timestamp': read_time,
-                    'IP Address': row.ip_address or "N/A",
-                    'Browser User-Agent': row.user_agent or "N/A",
-                    'Update ID': row.update_id or "N/A",
-                    'Update Message': update_message,
-                    'Update Author': row.update_author or "N/A",
-                    'Update Process': row.update_process or "N/A",
-                    'Update Created': update_created_time,
-                })
-
-            # Create DataFrame
-            df = pd.DataFrame(data)
-
-            # Create summary statistics
-            summary_data = []
-
-            # Total reads
-            total_reads = len(df)
-            summary_data.append({'Metric': 'Total Reads', 'Value': total_reads})
-
-            # Unique readers
-            unique_readers = df['Reader Name'].nunique() if not df.empty and 'Reader Name' in df.columns else 0
-            summary_data.append({'Metric': 'Unique Readers', 'Value': unique_readers})
-
-            # Registered vs Guest reads
-            if not df.empty and 'Reader Type' in df.columns:
-                registered_reads = len(df[df['Reader Type'] == 'Registered User'])
-                guest_reads = len(df[df['Reader Type'] == 'Guest'])
-            else:
-                registered_reads = 0
-                guest_reads = 0
-            summary_data.append({'Metric': 'Registered User Reads', 'Value': registered_reads})
-            summary_data.append({'Metric': 'Guest Reads', 'Value': guest_reads})
-
-            # Most active readers (top 10)
-            top_readers = df['Reader Name'].value_counts().head(10) if not df.empty and 'Reader Name' in df.columns else pd.Series()
-
-            # Most read updates (top 10)
-            if not df.empty and 'Update ID' in df.columns and 'Update Message' in df.columns and 'Update Author' in df.columns:
-                most_read_updates = df.groupby(['Update ID', 'Update Message', 'Update Author']).size().reset_index(name='Read Count').sort_values('Read Count', ascending=False).head(10)
-            else:
-                most_read_updates = pd.DataFrame()
-
-            # Create Excel file in memory
-            output = BytesIO()
-
-            # Query activity logs - using explicit aliases to avoid parameter conflicts
-            activity_logs_query = db.session.query(
-                ActivityLog.id,
-                ActivityLog.action,
-                ActivityLog.entity_type,
-                ActivityLog.entity_id,
-                ActivityLog.entity_title,
-                ActivityLog.timestamp,
-                ActivityLog.ip_address,
-                ActivityLog.user_agent,
-                ActivityLog.details,
-                user_alias.display_name.label('user_name'),
-                user_alias.username.label('username')
-            ).outerjoin(
-                user_alias, ActivityLog.user_id == user_alias.id
-            ).order_by(ActivityLog.timestamp.desc())
-
-            activity_results = activity_logs_query.all()
-
-            # Prepare activity logs data
-            activity_data = []
-            for row in activity_results:
-                user_name = row.user_name if row.user_name else "System"
-                # Convert UTC timestamp to IST for proper display
-                if row.timestamp:
-                    ist_timestamp = to_ist(row.timestamp)
-                    activity_time = ist_timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    activity_time = ""
-
-                activity_data.append({
-                    'Activity ID': row.id,
-                    'User Name': user_name,
-                    'Username': row.username or "N/A",
-                    'Action': row.action.title(),
-                    'Entity Type': row.entity_type.upper(),
-                    'Entity ID': row.entity_id,
-                    'Entity Title': row.entity_title or "N/A",
-                    'Timestamp': activity_time,
-                    'IP Address': row.ip_address or "N/A",
-                    'Browser User-Agent': row.user_agent or "N/A",
-                    'Details': row.details or "N/A"
-                })
-
-            activity_df = pd.DataFrame(activity_data)
-
-            # Query registered users for authority tracking - using explicit aliases to avoid parameter conflicts
-            users_query = db.session.query(
-                user_alias.id,
-                user_alias.username,
-                user_alias.display_name,
-                user_alias.email,
-                user_alias.role
-            ).order_by(user_alias.id)
-
-            users_results = users_query.all()
-            users_data = []
-            for idx, user in enumerate(users_results, 1):
-                users_data.append({
-                    'Serial #': idx,
-                    'User ID': user.id,
-                    'Username': user.username,
-                    'Display Name': user.display_name,
-                    'Email': user.email or "N/A",
-                    'Role': user.role.title()
-                })
-
-            users_df = pd.DataFrame(users_data)
-
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Main data sheet
-                df.to_excel(writer, sheet_name='Read Logs', index=False)
-
-                # Summary sheet
-                summary_df = pd.DataFrame(summary_data)
-                summary_df.to_excel(writer, sheet_name='Summary', index=False)
-
-                # Activity Logs sheet
-                activity_df.to_excel(writer, sheet_name='Activity Logs', index=False)
-
-                # Registered Users sheet
-                users_df.to_excel(writer, sheet_name='Registered Users', index=False)
-
-                # Top readers sheet
-                top_readers_df = pd.DataFrame({
-                    'Reader Name': top_readers.index,
-                    'Total Reads': top_readers.values
-                })
-                top_readers_df.to_excel(writer, sheet_name='Top Readers', index=False)
-
-                # Most read updates sheet
-                most_read_updates.to_excel(writer, sheet_name='Most Read Updates', index=False)
-
-                # Process-wise analytics
-                if not df.empty and 'Update Process' in df.columns and 'Reader Name' in df.columns:
-                    process_stats = df.groupby('Update Process').agg({
-                        'Read Log ID': 'count',
-                        'Reader Name': 'nunique'
-                    }).rename(columns={
-                        'Read Log ID': 'Total Reads',
-                        'Reader Name': 'Unique Readers'
-                    }).reset_index()
-                    process_stats.to_excel(writer, sheet_name='Process Analytics', index=False)
-
-                # Format the Excel sheets
-                for sheet_name in writer.sheets:
-                    worksheet = writer.sheets[sheet_name]
-
-                    # Auto-adjust column widths
-                    for column in worksheet.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-
-                        adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
-                        worksheet.column_dimensions[column_letter].width = adjusted_width
-
+            # Section 1: Read Logs
+            writer.writerow(['=== READ LOGS ==='])
+            writer.writerow([
+                'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Timestamp (IST)',
+                'IP Address', 'User Agent', 'Update Title', 'Process', 'Update Timestamp (IST)'
+            ])
+            yield output.getvalue()
             output.seek(0)
+            output.truncate(0)
 
-            # Generate filename with timestamp
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'readlogs_export_{timestamp}.xlsx'
+            # Stream read logs data in chunks
+            chunk_size = 100
+            offset = 0
 
-            return send_file(
-                output,
-                as_attachment=True,
-                download_name=filename,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
+            while True:
+                with app.app_context():
+                    logger.info(f"Executing read logs query with offset: {offset}, chunk_size: {chunk_size}")
+                    read_logs = db.session.query(
+                        ReadLog.id,
+                        ReadLog.update_id,
+                        ReadLog.user_id,
+                        ReadLog.guest_name,
+                        ReadLog.timestamp,
+                        ReadLog.ip_address,
+                        ReadLog.user_agent,
+                        Update.name.label('update_name'),
+                        Update.process,
+                        Update.timestamp.label('update_timestamp')
+                    ).join(
+                        Update, ReadLog.update_id == Update.id
+                    ).order_by(
+                        ReadLog.timestamp.desc()
+                    ).limit(chunk_size).offset(offset).all()
 
-        except Exception as e:
-            # Log the error
-            current_app.logger.error(f"Error exporting read logs: {str(e)}")
+                    logger.info(f"Read logs query returned {len(read_logs)} records")
 
-            # Return error page or redirect with flash message
-            flash(f"❌ Error exporting read logs: {str(e)}", "error")
-            return redirect(url_for('home'))
+                if not read_logs:
+                    logger.info("No more read log records to process")
+                    break
 
-    @app.route("/reset-activity-logs", methods=["POST"])
+                for log in read_logs:
+                    try:
+                        reader_type = 'Registered' if log.user_id else 'Guest'
+                        reader_name = log.guest_name if not log.user_id else 'N/A'
+                        ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
+                        update_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
+
+                        writer.writerow([
+                            log.id,
+                            log.update_id,
+                            reader_type,
+                            reader_name,
+                            ist_timestamp,
+                            log.ip_address or '',
+                            (log.user_agent or '')[:100],
+                            log.update_name,
+                            log.process,
+                            update_ist_timestamp
+                        ])
+                    except Exception as row_error:
+                        logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
+                        continue
+
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+                offset += chunk_size
+
+                if offset >= 10000:  # Safety limit
+                    break
+
+            # Section 2: Activity Logs
+            writer.writerow([])
+            writer.writerow(['=== ACTIVITY LOGS ==='])
+            writer.writerow([
+                'Activity ID', 'User', 'Action', 'Entity Type', 'Entity Title',
+                'Timestamp (IST)', 'IP Address', 'User Agent', 'Details'
+            ])
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+            # Get activity logs
+            with app.app_context():
+                activity_logs = db.session.query(
+                    ActivityLog.id,
+                    ActivityLog.user_id,
+                    ActivityLog.action,
+                    ActivityLog.entity_type,
+                    ActivityLog.entity_title,
+                    ActivityLog.timestamp,
+                    ActivityLog.ip_address,
+                    ActivityLog.user_agent,
+                    ActivityLog.details,
+                    User.display_name.label('user_name')
+                ).outerjoin(
+                    User, ActivityLog.user_id == User.id
+                ).order_by(
+                    ActivityLog.timestamp.desc()
+                ).limit(1000).all()  # Limit to prevent excessive data
+
+            for log in activity_logs:
+                try:
+                    ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
+                    user_name = log.user_name if log.user_name else 'System'
+
+                    writer.writerow([
+                        log.id,
+                        user_name,
+                        log.action,
+                        log.entity_type,
+                        log.entity_title or '',
+                        ist_timestamp,
+                        log.ip_address or '',
+                        (log.user_agent or '')[:100],
+                        log.details or ''
+                    ])
+                except Exception as row_error:
+                    logger.error(f"Error processing activity log entry {log.id}: {str(row_error)}")
+                    continue
+
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+            # Section 3: Summary Analytics
+            writer.writerow([])
+            writer.writerow(['=== SUMMARY ANALYTICS ==='])
+            writer.writerow(['Metric', 'Value'])
+
+            with app.app_context():
+                # Total reads
+                total_reads = db.session.query(func.count(ReadLog.id)).scalar()
+
+                # Unique readers (registered users)
+                unique_registered = db.session.query(func.count(func.distinct(ReadLog.user_id))).filter(
+                    ReadLog.user_id.isnot(None)
+                ).scalar()
+
+                # Unique guest readers
+                unique_guests = db.session.query(func.count(func.distinct(ReadLog.guest_name))).filter(
+                    ReadLog.user_id.is_(None)
+                ).scalar()
+
+                # Total registered vs guest reads
+                registered_reads = db.session.query(func.count(ReadLog.id)).filter(
+                    ReadLog.user_id.isnot(None)
+                ).scalar()
+
+                guest_reads = db.session.query(func.count(ReadLog.id)).filter(
+                    ReadLog.user_id.is_(None)
+                ).scalar()
+
+                # Total updates
+                total_updates = db.session.query(func.count(Update.id)).scalar()
+
+            writer.writerow(['Total Reads', total_reads or 0])
+            writer.writerow(['Unique Registered Readers', unique_registered or 0])
+            writer.writerow(['Unique Guest Readers', unique_guests or 0])
+            writer.writerow(['Registered User Reads', registered_reads or 0])
+            writer.writerow(['Guest User Reads', guest_reads or 0])
+            writer.writerow(['Total Updates', total_updates or 0])
+
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+            # Section 4: Top Performers
+            writer.writerow([])
+            writer.writerow(['=== TOP PERFORMERS ==='])
+
+            # Most active readers
+            writer.writerow(['Most Active Readers'])
+            writer.writerow(['Reader Name', 'Reader Type', 'Total Reads'])
+
+            with app.app_context():
+                # Top registered readers
+                top_registered = db.session.query(
+                    User.display_name,
+                    func.count(ReadLog.id).label('read_count')
+                ).join(
+                    ReadLog, User.id == ReadLog.user_id
+                ).group_by(
+                    User.id, User.display_name
+                ).order_by(
+                    func.count(ReadLog.id).desc()
+                ).limit(10).all()
+
+                # Top guest readers
+                top_guests = db.session.query(
+                    ReadLog.guest_name,
+                    func.count(ReadLog.id).label('read_count')
+                ).filter(
+                    ReadLog.user_id.is_(None)
+                ).group_by(
+                    ReadLog.guest_name
+                ).order_by(
+                    func.count(ReadLog.id).desc()
+                ).limit(10).all()
+
+            for reader, count in top_registered:
+                writer.writerow([reader, 'Registered', count])
+
+            for reader, count in top_guests:
+                writer.writerow([reader, 'Guest', count])
+
+            # Most popular updates
+            writer.writerow([])
+            writer.writerow(['Most Popular Updates'])
+            writer.writerow(['Update Title', 'Process', 'Total Reads'])
+
+            with app.app_context():
+                top_updates = db.session.query(
+                    Update.name,
+                    Update.process,
+                    func.count(ReadLog.id).label('read_count')
+                ).outerjoin(
+                    ReadLog, Update.id == ReadLog.update_id
+                ).group_by(
+                    Update.id, Update.name, Update.process
+                ).order_by(
+                    func.count(ReadLog.id).desc()
+                ).limit(10).all()
+
+            for title, process, count in top_updates:
+                writer.writerow([title, process, count])
+
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+            # Section 5: Engagement Metrics by Process Categories
+            writer.writerow([])
+            writer.writerow(['=== ENGAGEMENT METRICS BY PROCESS ==='])
+            writer.writerow(['Process', 'Total Updates', 'Total Reads', 'Unique Readers', 'Avg Reads per Update'])
+
+            with app.app_context():
+                # Get process metrics with proper unique reader counting
+                process_metrics = db.session.query(
+                    Update.process,
+                    func.count(func.distinct(Update.id)).label('update_count'),
+                    func.count(ReadLog.id).label('read_count')
+                ).outerjoin(
+                    ReadLog, Update.id == ReadLog.update_id
+                ).group_by(
+                    Update.process
+                ).order_by(
+                    Update.process
+                ).all()
+
+                # Get unique readers per process using a subquery approach
+                process_unique_readers = {}
+                for process_name, _, _ in process_metrics:
+                    # Count unique registered users for this process
+                    registered_count = db.session.query(
+                        func.count(func.distinct(ReadLog.user_id))
+                    ).join(
+                        Update, ReadLog.update_id == Update.id
+                    ).filter(
+                        Update.process == process_name,
+                        ReadLog.user_id.isnot(None)
+                    ).scalar()
+
+                    # Count unique guest users for this process
+                    guest_count = db.session.query(
+                        func.count(func.distinct(ReadLog.guest_name))
+                    ).join(
+                        Update, ReadLog.update_id == Update.id
+                    ).filter(
+                        Update.process == process_name,
+                        ReadLog.user_id.is_(None),
+                        ReadLog.guest_name.isnot(None)
+                    ).scalar()
+
+                    process_unique_readers[process_name] = (registered_count or 0) + (guest_count or 0)
+
+            for process, update_count, read_count in process_metrics:
+                unique_readers = process_unique_readers.get(process, 0)
+                avg_reads = round(read_count / update_count, 2) if update_count > 0 else 0
+                writer.writerow([process, update_count, read_count, unique_readers, avg_reads])
+
+            yield output.getvalue()
+
+        # Generate timestamp for filename
+        timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
+
+        # Return streaming CSV response
+        response = Response(
+            generate_csv(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=readlogs_export_{timestamp_str}.csv',
+                'Cache-Control': 'no-cache'
+            }
+        )
+        return response
+
+    @app.route("/reset_activity_logs", methods=["POST"])
     @admin_required
     def reset_activity_logs():
-        """Reset (delete all) activity logs with admin password verification."""
+        """Reset all activity logs - admin only with password confirmation"""
         try:
-            # Get the admin password from the form
+            # Get admin password from form
             admin_password = request.form.get('admin_password', '').strip()
 
             if not admin_password:
-                flash("❌ Admin password is required to reset activity logs.", "error")
+                flash("Admin password is required.", "error")
                 return redirect(url_for('export_readlogs'))
 
-            # Get the current admin user
-            admin_user_id = session.get("user_id")
-            if not admin_user_id:
-                flash("❌ Authentication error. Please log in again.", "error")
-                return redirect(url_for('login'))
-
-            admin_user = User.query.get(admin_user_id)
-            if not admin_user or admin_user.role != 'admin':
-                flash("❌ Admin access required.", "error")
-                return redirect(url_for('home'))
-
-            # Verify the admin password
-            if not admin_user.check_password(admin_password):
-                flash("❌ Incorrect admin password. Activity logs were not reset.", "error")
+            # Verify admin password
+            current_user = User.query.get(session.get("user_id"))
+            if not current_user or not current_user.check_password(admin_password):
+                flash("Invalid admin password.", "error")
                 return redirect(url_for('export_readlogs'))
 
-            # Count current activity logs before deletion
-            activity_count = ActivityLog.query.count()
+            # Get count before deletion for logging
+            count_before = ActivityLog.query.count()
 
             # Delete all activity logs
             ActivityLog.query.delete()
+
+            # Commit the changes
             db.session.commit()
 
-            flash(f"✅ Successfully reset activity logs. {activity_count} records were deleted.", "success")
+            # Log this action (this will create a new activity log entry)
+            log_activity('reset', 'activity_logs', 'all', f'Reset {count_before} activity log records')
 
-            # Log this action (create a new activity log entry for the reset)
-            log_activity('reset', 'activity_logs', 'all', f"Reset all activity logs ({activity_count} records)",
-                        details=f"Admin {admin_user.display_name} reset all activity logs")
+            flash(f"Successfully reset {count_before} activity log records.", "success")
 
         except Exception as e:
             db.session.rollback()
-            flash(f"❌ Error resetting activity logs: {str(e)}", "error")
+            logger.error(f"Failed to reset activity logs: {e}")
+            flash("Failed to reset activity logs. Please try again.", "error")
 
         return redirect(url_for('export_readlogs'))
+
+    # Additional functionality removed for light version
 
     @app.route("/backup")
     @admin_required
