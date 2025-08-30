@@ -2350,6 +2350,9 @@ def create_app(config_name=None):
 
     return app
 
+# Create the Flask app instance for gunicorn
+app = create_app()
+
 if __name__ == "__main__":
     # Create app instance for gunicorn or direct execution
     app = create_app()
