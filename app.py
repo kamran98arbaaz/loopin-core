@@ -29,7 +29,6 @@ from io import BytesIO
 import sys
 import subprocess
 from pathlib import Path
-import pandas as pd
 
 # Lightweight CSV export available for light version
 EXCEL_EXPORT_AVAILABLE = True  # CSV export implemented for light version
