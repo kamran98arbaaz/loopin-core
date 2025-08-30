@@ -37,6 +37,17 @@ class ProductionConfig(Config):
     TESTING = False
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
 
+    # Render-optimized SQLAlchemy engine options
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,      # Enable connection health checks
+        "pool_recycle": 300,        # Recycle connections after 5 minutes
+        "pool_timeout": 20,         # Connection timeout after 20 seconds (Render-friendly)
+        "max_overflow": 10,         # Maximum number of connections to overflow
+        "pool_size": 5,            # Base number of connections in the pool (Render limits)
+        "echo": False,             # Don't log all SQL statements in production
+        "echo_pool": False         # Don't log connection pool operations
+    }
+
 class DevelopmentConfig(Config):
     """Development configuration."""
     ENV = "development"

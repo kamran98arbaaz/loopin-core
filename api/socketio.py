@@ -42,28 +42,32 @@ def handle_connect(auth=None):
 
         # Log basic connection info (only in development or for important events)
         if is_development:
-            logger.info(f"🔌 Socket.IO connection from {request.remote_addr}")
-            print(f"🔌 Socket.IO connection from {request.remote_addr}")
+            logger.info(f"Socket.IO connection from {request.remote_addr}")
+            print(f"Socket.IO connection from {request.remote_addr}")
 
         # Check if user is authenticated via session
         user_id = session.get('user_id')
         if user_id:
-            # Get user from database
-            user = User.query.get(user_id)
-            if user:
-                # Join user-specific room for private notifications
-                join_room(f"user_{user.id}")
-                # Join authenticated users room
-                join_room('authenticated_users')
-                if is_development:
-                    logger.info(f"👤 User {user.username} (ID: {user.id}) connected to Socket.IO")
-                    print(f"👤 User {user.username} (ID: {user.id}) connected to Socket.IO")
-                emit('connected', {
-                    'user_id': user.id,
-                    'username': user.username,
-                    'message': 'Connected to real-time updates'
-                })
-                return
+            try:
+                # Get user from database with error handling
+                user = User.query.get(user_id)
+                if user:
+                    # Join user-specific room for private notifications
+                    join_room(f"user_{user.id}")
+                    # Join authenticated users room
+                    join_room('authenticated_users')
+                    if is_development:
+                        logger.info(f"User {user.username} (ID: {user.id}) connected to Socket.IO")
+                        print(f"User {user.username} (ID: {user.id}) connected to Socket.IO")
+                    emit('connected', {
+                        'user_id': user.id,
+                        'username': user.username,
+                        'message': 'Connected to real-time updates'
+                    })
+                    return
+            except Exception as db_e:
+                logger.error(f"Database error during user lookup: {db_e}")
+                # Continue as guest if database fails
 
         # Guest users join general room
         join_room('guests')
@@ -71,8 +75,8 @@ def handle_connect(auth=None):
             'message': 'Connected as guest'
         })
         if is_development:
-            logger.info("👤 Guest connected to Socket.IO")
-            print("👤 Guest connected to Socket.IO")
+            logger.info("Guest connected to Socket.IO")
+            print("Guest connected to Socket.IO")
 
     except Exception as e:
         # Fallback for any errors
@@ -81,8 +85,8 @@ def handle_connect(auth=None):
             'message': 'Connected as guest',
             'error': str(e)
         })
-        logger.error(f"⚠️ Socket.IO connection error: {e}")
-        print(f"⚠️ Socket.IO connection error: {e}")
+        logger.error(f"Socket.IO connection error: {e}")
+        print(f"Socket.IO connection error: {e}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -105,9 +109,9 @@ def handle_disconnect():
                 print("👤 Guest disconnected from Socket.IO")
     except Exception as e:
         leave_room('guests')
-        logger.error(f"⚠️ Error during Socket.IO disconnect: {e}")
+        logger.error(f"Error during Socket.IO disconnect: {e}")
         if os.getenv("FLASK_ENV") == "development":
-            print(f"⚠️ Error during Socket.IO disconnect: {e}")
+            print(f"Error during Socket.IO disconnect: {e}")
 
 @socketio.on('join_process_room')
 def handle_join_process(data):
@@ -187,13 +191,19 @@ def handle_mark_read(data):
             }, broadcast=True)
 
             emit('success', {'message': 'Update marked as read'})
-            print(f"📖 Update {update_id} marked as read by {user.username}")
+            print(f"Update {update_id} marked as read by {user.username}")
         else:
             emit('info', {'message': 'Update already marked as read'})
 
     except Exception as e:
+        # Handle database transaction errors
+        try:
+            db.session.rollback()
+        except:
+            pass
+
         emit('error', {'message': f'Error marking as read: {str(e)}'})
-        print(f"❌ Error marking update as read: {e}")
+        print(f"Error marking update as read: {e}")
 
 @socketio.on('get_unread_count')
 def handle_get_unread_count():
@@ -216,10 +226,16 @@ def handle_get_unread_count():
         ).filter(ReadLog.id.is_(None)).count()
 
         emit('unread_count', {'count': unread_count})
-        print(f"📊 Unread count for {user.username}: {unread_count}")
+        print(f"Unread count for {user.username}: {unread_count}")
     except Exception as e:
+        # Handle database transaction errors
+        try:
+            db.session.rollback()
+        except:
+            pass
+
         emit('error', {'message': f'Error getting unread count: {str(e)}'})
-        print(f"❌ Error getting unread count: {e}")
+        print(f"Error getting unread count: {e}")
 
 @socketio.on('subscribe_to_updates')
 def handle_subscribe_updates(data=None):
@@ -238,8 +254,8 @@ def handle_subscribe_updates(data=None):
             'room': room_name,
             'message': f'Subscribed to {process_filter} updates'
         })
-        logger.info(f"📡 Client subscribed to process room: {room_name}")
-        print(f"📡 Client subscribed to process room: {room_name}")
+        logger.info(f"Client subscribed to process room: {room_name}")
+        print(f"Client subscribed to process room: {room_name}")
     else:
         # Join general updates room
         join_room('updates')
@@ -247,8 +263,8 @@ def handle_subscribe_updates(data=None):
             'room': 'updates',
             'message': 'Subscribed to all updates'
         })
-        logger.info("📡 Client subscribed to general updates room")
-        print("📡 Client subscribed to general updates room")
+        logger.info("Client subscribed to general updates room")
+        print("Client subscribed to general updates room")
 
 def broadcast_update(update_data, process=None):
     """Broadcast an update to all connected clients"""
@@ -257,10 +273,10 @@ def broadcast_update(update_data, process=None):
         is_development = os.getenv("FLASK_ENV") == "development"
 
         if is_development:
-            logger.info(f"📡 Broadcasting update: {update_data.get('id', 'unknown')}")
+            logger.info(f"Broadcasting update: {update_data.get('id', 'unknown')}")
 
         if not _socketio:
-            logger.error("⚠️ Socket.IO not initialized, skipping broadcast")
+            logger.error("Socket.IO not initialized, skipping broadcast")
             return
 
         # Emit to general updates room
@@ -284,42 +300,42 @@ def broadcast_update(update_data, process=None):
         _socketio.emit('notification', notification_data, room='guests', namespace='/')  # Also send to guests
 
         if is_development:
-            logger.info(f"✅ Update broadcasted successfully - ID: {update_data.get('id')}")
+            logger.info(f"Update broadcasted successfully - ID: {update_data.get('id')}")
 
     except Exception as e:
-        logger.error(f"❌ Error broadcasting update: {e}")
+        logger.error(f"Error broadcasting update: {e}")
         if os.getenv("FLASK_ENV") == "development":
-            print(f"❌ Error broadcasting update: {e}")
+            print(f"Error broadcasting update: {e}")
 
 def broadcast_notification(notification_data, user_id=None):
     """Broadcast a notification to specific user or all users"""
     try:
         if not _socketio:
-            logger.error("⚠️ Socket.IO not initialized, skipping broadcast")
+            logger.error("Socket.IO not initialized, skipping broadcast")
             return
 
         # Determine environment for conditional logging
         is_development = os.getenv("FLASK_ENV") == "development"
 
         if is_development:
-            logger.info(f"📡 Broadcasting notification: {notification_data.get('type', 'unknown')}")
+            logger.info(f"Broadcasting notification: {notification_data.get('type', 'unknown')}")
 
         if user_id:
             # Send to specific user
             _socketio.emit('notification', notification_data, room=f'user_{user_id}', namespace='/')
             if is_development:
-                logger.info(f"✅ Notification sent to user {user_id}")
+                logger.info(f"Notification sent to user {user_id}")
         else:
             # Send to all authenticated users and guests
             _socketio.emit('notification', notification_data, room='authenticated_users', namespace='/')
             _socketio.emit('notification', notification_data, room='guests', namespace='/')
             if is_development:
-                logger.info("✅ Notification broadcasted to all users")
+                logger.info("Notification broadcasted to all users")
 
     except Exception as e:
-        logger.error(f"❌ Error broadcasting notification: {e}")
+        logger.error(f"Error broadcasting notification: {e}")
         if os.getenv("FLASK_ENV") == "development":
-            print(f"❌ Error broadcasting notification: {e}")
+            print(f"Error broadcasting notification: {e}")
 
 @socketio.on('test_connection')
 def handle_test_connection(data=None):
@@ -329,7 +345,7 @@ def handle_test_connection(data=None):
         is_development = os.getenv("FLASK_ENV") == "development"
 
         if is_development:
-            logger.info("🧪 Socket.IO test connection received")
+            logger.info("Socket.IO test connection received")
 
         emit('test_response', {
             'message': 'Socket.IO connection is working!',
@@ -338,10 +354,10 @@ def handle_test_connection(data=None):
         })
 
         if is_development:
-            logger.info("✅ Test response sent successfully")
+            logger.info("Test response sent successfully")
 
     except Exception as e:
-        logger.error(f"❌ Error in test connection: {e}")
+        logger.error(f"Error in test connection: {e}")
         emit('test_response', {
             'error': str(e),
             'timestamp': datetime.now(timezone.utc).isoformat()

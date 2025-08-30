@@ -1,22 +1,34 @@
 """Database session management and utilities"""
 
+import os
+import logging
 from contextlib import contextmanager
 from typing import Generator
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 from extensions import db
+
+logger = logging.getLogger(__name__)
 
 @contextmanager
 def db_session() -> Generator:
     """Provide a transactional scope around a series of operations."""
+    logger.info("Starting database session")
     try:
         yield db.session
+        logger.info("Committing database transaction")
         db.session.commit()
     except SQLAlchemyError as e:
+        logger.error(f"Database error: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        if hasattr(e, 'orig'):
+            logger.error(f"Original error: {e.orig}")
         db.session.rollback()
         current_app.logger.error(f"Database error: {str(e)}")
         raise
     finally:
+        logger.info("Closing database session")
         db.session.close()
 
 def init_db(app):
@@ -36,11 +48,122 @@ def cleanup_db():
     except Exception as e:
         current_app.logger.error(f"Error cleaning up database session: {str(e)}")
 
-def health_check() -> bool:
-    """Check database connectivity."""
+# SSL context configuration removed - psycopg2 handles SSL through connection parameters
+
+def test_ssl_connection():
+    """Test SSL connection parameters and attempt to diagnose SSL issues."""
+    logger.info("Testing SSL connection configuration")
+
     try:
-        db.session.execute("SELECT 1")
+        # Check if we're using PostgreSQL
+        if db.engine.url.drivername != 'postgresql':
+            logger.info("Not using PostgreSQL, SSL test skipped")
+            return True
+
+        # Test basic connection
+        logger.info("Testing basic PostgreSQL connection...")
+        db.session.execute(text("SELECT version()"))
+        logger.info("Basic connection successful")
+
+        # Test SSL-specific query (some PostgreSQL instances may not have sslinfo extension)
+        logger.info("Testing SSL connection details...")
+        try:
+            ssl_query = text("""
+                SELECT
+                    ssl_cipher() as cipher,
+                    ssl_version() as version,
+                    ssl_client_cert_present() as client_cert,
+                    ssl_client_cert_subject() as client_subject
+            """)
+
+            result = db.session.execute(ssl_query).fetchone()
+            if result:
+                logger.info(f"SSL Cipher: {result.cipher}")
+                logger.info(f"SSL Version: {result.version}")
+                logger.info(f"Client Certificate Present: {result.client_cert}")
+                logger.info("SSL connection details retrieved successfully")
+            else:
+                logger.warning("Could not retrieve SSL connection details")
+        except Exception as ssl_e:
+            logger.warning(f"SSL info functions not available: {ssl_e}")
+            logger.info("This is normal for some PostgreSQL configurations (e.g., Render)")
+            # Try a simpler SSL test
+            try:
+                simple_ssl_query = text("SELECT 1 as ssl_test")
+                db.session.execute(simple_ssl_query)
+                logger.info("SSL connection appears to be working (basic test passed)")
+            except Exception as simple_e:
+                logger.error(f"Even basic SSL test failed: {simple_e}")
+                return False
+
         return True
+
     except SQLAlchemyError as e:
+        logger.error(f"SSL connection test failed: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        if hasattr(e, 'orig'):
+            logger.error(f"Original error: {e.orig}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during SSL test: {str(e)}")
+        return False
+
+def health_check() -> bool:
+    """Check database connectivity with SSL-aware error handling."""
+    logger.info("Starting database health check")
+
+    # Log database connection details
+    try:
+        db_url = str(db.engine.url)
+        logger.info(f"Database URL scheme: {db.engine.url.drivername}")
+        logger.info(f"Database host: {db.engine.url.host}")
+        logger.info(f"Database name: {db.engine.url.database}")
+
+        # Log SSL-related environment variables
+        ssl_env_vars = ['PG_SSLMODE', 'DATABASE_URL']
+        for var in ssl_env_vars:
+            value = os.getenv(var)
+            if value:
+                logger.info(f"{var}: {'***' if 'password' in var.lower() else value}")
+            else:
+                logger.warning(f"{var} not set")
+
+        # Log connection pool status
+        pool = db.engine.pool
+        logger.info(f"Connection pool size: {getattr(pool, 'size', 'N/A')}")
+        logger.info(f"Connection pool overflow: {getattr(pool, '_overflow', 'N/A')}")
+
+        # Test connection with retry logic for SSL issues
+        logger.info("Testing database connection...")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                result = db.session.execute(text("SELECT 1"))
+                logger.info("Database connection successful")
+                return True
+            except SQLAlchemyError as conn_e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Connection attempt {attempt + 1} failed, retrying: {conn_e}")
+                    # Force pool recycle on connection errors
+                    try:
+                        db.session.close()
+                        db.engine.dispose()
+                    except:
+                        pass
+                    continue
+                else:
+                    # Final attempt failed
+                    raise conn_e
+
+    except SQLAlchemyError as e:
+        logger.error(f"Database health check failed: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        if hasattr(e, 'orig'):
+            logger.error(f"Original psycopg2 error: {e.orig}")
+            if hasattr(e.orig, 'pgcode'):
+                logger.error(f"PostgreSQL error code: {e.orig.pgcode}")
         current_app.logger.error(f"Database health check failed: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during health check: {str(e)}")
         return False

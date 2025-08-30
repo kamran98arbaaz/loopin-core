@@ -179,10 +179,40 @@ def create_app(config_name=None):
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # Configure SSL for PostgreSQL if needed
-    if os.getenv("PG_SSLMODE") and parsed.scheme in ("postgresql", "postgres"):
+    # Configure SSL for PostgreSQL with Render-specific defaults
+    if parsed.scheme in ("postgresql", "postgres"):
+        ssl_config = {}
+
+        # Set SSL mode with Render-friendly defaults
+        ssl_mode = os.getenv("PG_SSLMODE", "require")  # Default to 'require' for Render
+        ssl_config["sslmode"] = ssl_mode
+        logger.info(f"PostgreSQL SSL mode: {ssl_mode}")
+
+        # Additional SSL parameters for better compatibility
+        if os.getenv("PG_SSLROOTCERT"):
+            ssl_config["sslrootcert"] = os.getenv("PG_SSLROOTCERT")
+        if os.getenv("PG_SSLCERT"):
+            ssl_config["sslcert"] = os.getenv("PG_SSLCERT")
+        if os.getenv("PG_SSLKEY"):
+            ssl_config["sslkey"] = os.getenv("PG_SSLKEY")
+
+        # Set connection arguments
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-            "connect_args": {"sslmode": os.getenv("PG_SSLMODE")}
+            "connect_args": ssl_config,
+            # Render-specific connection pool settings
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_timeout": 20,  # Shorter timeout for Render
+            "pool_size": 5,      # Smaller pool for Render's limits
+            "max_overflow": 10,  # Allow some overflow
+        }
+
+        logger.info(f"SQLAlchemy engine options configured for PostgreSQL")
+    else:
+        # Non-PostgreSQL databases use default settings
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
         }
 
     db.init_app(app)
@@ -196,6 +226,14 @@ def create_app(config_name=None):
             # Test basic connection
             db.session.execute(text("SELECT 1"))
             logger.info("✅ Database connection successful")
+
+            # Test SSL connection if using PostgreSQL
+            from database import test_ssl_connection
+            ssl_test_result = test_ssl_connection()
+            if ssl_test_result:
+                logger.info("✅ SSL connection test passed")
+            else:
+                logger.warning("⚠️ SSL connection test failed - this may cause issues")
 
             # Check if tables exist
             from sqlalchemy import inspect
@@ -1080,6 +1118,9 @@ def create_app(config_name=None):
     def api_latest_update_time():
         """API endpoint to get the timestamp of the most recent update"""
         try:
+            # Ensure we have a fresh database session
+            db.session.close()
+
             latest_update = Update.query.order_by(Update.timestamp.desc()).first()
             if latest_update:
                 # Ensure timezone is properly handled
@@ -1096,6 +1137,13 @@ def create_app(config_name=None):
                 })
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
+            # Try to rollback and close session on error
+            try:
+                db.session.rollback()
+                db.session.close()
+            except:
+                pass
+
             return jsonify({
                 "latest_timestamp": None,
                 "success": False,
