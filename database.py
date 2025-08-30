@@ -150,6 +150,37 @@ def validate_connection_before_operation():
             logger.error(f"Error disposing engine: {dispose_e}")
         return False
 
+def ensure_database_ready():
+    """Ensure database is properly configured and ready for operations."""
+    try:
+        # Check if we're using the right database type
+        if db.engine.url.drivername.startswith('sqlite'):
+            logger.warning("SQLite detected - this may cause lock issues in production")
+            return False
+
+        # Validate connection
+        if not validate_connection_before_operation():
+            logger.error("Database connection validation failed")
+            return False
+
+        # Check if essential tables exist
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        existing_tables = inspector.get_table_names()
+        essential_tables = ['users', 'updates']
+
+        for table in essential_tables:
+            if table not in existing_tables:
+                logger.warning(f"Essential table '{table}' not found")
+                return False
+
+        logger.info("Database is ready for operations")
+        return True
+
+    except Exception as e:
+        logger.error(f"Database readiness check failed: {e}")
+        return False
+
 # SSL context configuration removed - psycopg2 handles SSL through connection parameters
 
 def test_ssl_connection(connection=None):
@@ -278,7 +309,7 @@ def get_connection_with_retry(max_retries=3):
 
 def health_check() -> bool:
     """Check database connectivity with improved error handling for sync workers."""
-    logger.info("Starting database health check")
+    logger.info("Starting comprehensive database health check")
 
     # Log database connection details
     try:
@@ -301,6 +332,11 @@ def health_check() -> bool:
         logger.info(f"Connection pool size: {getattr(pool, 'size', 'N/A')}")
         logger.info(f"Connection pool overflow: {getattr(pool, '_overflow', 'N/A')}")
 
+        # Check if we're using the correct database type
+        if db.engine.url.drivername.startswith('sqlite'):
+            logger.warning("WARNING: Using SQLite database - this may cause lock issues in production")
+            logger.warning("Ensure DATABASE_URL is properly set to PostgreSQL on Render")
+
         # Test connection with improved retry logic for sync workers
         logger.info("Testing database connection...")
         max_retries = 3
@@ -310,6 +346,17 @@ def health_check() -> bool:
                 with get_connection_with_retry() as connection:
                     result = connection.execute(text("SELECT 1"))
                     result.fetchone()  # Consume the result
+
+                    # Additional health checks for PostgreSQL
+                    if db.engine.url.drivername == 'postgresql':
+                        # Test PostgreSQL-specific features
+                        try:
+                            pg_result = connection.execute(text("SELECT version()"))
+                            version = pg_result.fetchone()
+                            logger.info(f"PostgreSQL version: {version[0][:50]}...")
+                        except Exception as pg_e:
+                            logger.warning(f"PostgreSQL version check failed: {pg_e}")
+
                 logger.info("Database connection successful")
                 return True
             except SQLAlchemyError as conn_e:

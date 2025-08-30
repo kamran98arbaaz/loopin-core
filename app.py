@@ -82,8 +82,19 @@ def get_cached_user_role(user_id):
 def create_app(config_name=None):
     app = Flask(__name__)
     
-    # Apply default config
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///:memory:')
+    # Database configuration - ensure PostgreSQL is used consistently
+    database_url = os.getenv('DATABASE_URL')
+
+    # On Render, DATABASE_URL should always be set from the database service
+    if not database_url:
+        if os.getenv('RENDER'):
+            # If we're on Render but DATABASE_URL is not set, this is an error
+            raise RuntimeError("DATABASE_URL not set on Render - database service may not be properly configured")
+        else:
+            # For local development, use a default PostgreSQL URL
+            database_url = "postgresql://localhost/loopin_dev"
+
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev')
     
@@ -180,15 +191,20 @@ def create_app(config_name=None):
             print(f"🎨 Render Git Commit: {os.getenv('RENDER_GIT_COMMIT', 'Not set')}")
             print(f"🎨 Render Git Branch: {os.getenv('RENDER_GIT_BRANCH', 'Not set')}")
 
-    # Database configuration
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        database_url = "sqlite:///loopin.db"
-        if os.getenv("FLASK_ENV") == "development":
-            print("⚠️ DATABASE_URL not set, using SQLite by default")
-    else:
-        if os.getenv("FLASK_ENV") == "development":
-            print("Using database from DATABASE_URL")
+    # Database configuration - DATABASE_URL should be set from the first configuration block
+    database_url = app.config['SQLALCHEMY_DATABASE_URI']
+    if os.getenv("FLASK_ENV") == "development":
+        print(f"Using database: {database_url}")
+
+    # Validate database configuration
+    parsed = urlparse(database_url)
+    if parsed.scheme in ("sqlite", "sqlite3"):
+        if os.getenv("RENDER"):
+            logger.error("ERROR: SQLite detected on Render - this will cause lock issues!")
+            logger.error("Ensure DATABASE_URL is properly set to PostgreSQL in Render environment")
+            raise RuntimeError("SQLite database detected on Render - configure PostgreSQL instead")
+        else:
+            logger.warning("WARNING: Using SQLite in development - this may cause issues in production")
 
     parsed = urlparse(database_url)
     if parsed.scheme not in ("postgresql", "postgres", "sqlite", "sqlite3"):
@@ -217,15 +233,25 @@ def create_app(config_name=None):
         # Set connection arguments for Render with optimized connection pooling
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "connect_args": ssl_config,
-            # Optimized connection pool settings for better performance
+            # Optimized connection pool settings for Render free tier
             "pool_pre_ping": True,
-            "pool_recycle": 300,
-            "pool_timeout": 30,  # Increased timeout for better reliability
-            "pool_size": 10,     # Increased pool size for concurrent requests
-            "max_overflow": 20,  # Increased overflow for peak loads
-            # Additional settings for stability and performance
+            "pool_recycle": 300,  # Recycle connections every 5 minutes
+            "pool_timeout": 20,   # Connection timeout
+            "pool_size": 3,       # Small pool size for free tier
+            "max_overflow": 5,    # Limited overflow
+            # Transaction isolation and connection stability
+            "isolation_level": "READ_COMMITTED",  # Explicit isolation level
             "echo": False,  # Disable SQL echoing in production
             "pool_reset_on_return": "rollback",  # Reset connections on return
+            # Additional stability settings
+            "connect_args": {
+                **ssl_config,
+                "application_name": "loopin-core",  # Identify connections
+                "keepalives": 1,  # Enable TCP keepalives
+                "keepalives_idle": 30,  # TCP keepalive settings
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+            }
         }
 
         logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL with sync workers")
@@ -249,6 +275,12 @@ def create_app(config_name=None):
         # Verify database connection and table reflection
         db_verification_success = False
         try:
+            # Comprehensive database health check
+            from database import health_check
+            if not health_check():
+                logger.error("Database health check failed")
+                raise RuntimeError("Database health check failed")
+
             # Test basic connection with health check
             from database import get_connection_with_retry
             with get_connection_with_retry() as test_conn:
@@ -265,9 +297,9 @@ def create_app(config_name=None):
                 if ssl_test_result:
                     logger.info("SSL connection test passed")
                 else:
-                    logger.warning("⚠️ SSL connection test failed - this may cause issues")
+                    logger.warning("SSL connection test failed - this may cause issues")
             except Exception as ssl_e:
-                logger.warning(f"⚠️ SSL test error (non-critical): {ssl_e}")
+                logger.warning(f"SSL test error (non-critical): {ssl_e}")
 
             # Check if tables exist
             from sqlalchemy import inspect
@@ -281,6 +313,7 @@ def create_app(config_name=None):
             missing_tables = [table for table in expected_tables if table not in existing_tables]
             if missing_tables:
                 logger.warning(f"Missing tables: {missing_tables}")
+                logger.info("Tables will be created automatically by SQLAlchemy")
             else:
                 logger.info("All expected tables are present")
 
@@ -289,7 +322,7 @@ def create_app(config_name=None):
                 user_count = User.query.count()
                 logger.info(f"Users table has {user_count} records")
             except Exception as query_e:
-                logger.warning(f"⚠️ User count query failed, but continuing: {query_e}")
+                logger.warning(f"User count query failed, but continuing: {query_e}")
 
             db_verification_success = True
 
@@ -588,14 +621,14 @@ def create_app(config_name=None):
     def health():
         """Optimized health check endpoint"""
         try:
-            # Validate connection before health check
-            from database import validate_connection_before_operation
-            if not validate_connection_before_operation():
+            # Comprehensive database readiness check
+            from database import ensure_database_ready
+            if not ensure_database_ready():
                 return jsonify({
                     "status": "error",
-                    "message": "Database connection validation failed",
+                    "message": "Database not ready",
                     "timestamp": now_utc().isoformat()
-                }), 500
+                }), 503
 
             # Test database connection efficiently
             db.session.execute(text("SELECT 1"))
@@ -603,6 +636,7 @@ def create_app(config_name=None):
             out = {
                 "status": "ok",
                 "db": "connected",
+                "database_type": db.engine.url.drivername,
                 "timestamp": now_utc().isoformat()
             }
 
@@ -1115,6 +1149,16 @@ def create_app(config_name=None):
         """API endpoint to get the timestamp of the most recent update"""
         session = None
         try:
+            # Validate database readiness before operation
+            from database import ensure_database_ready
+            if not ensure_database_ready():
+                logger.error("Database not ready for latest-update-time operation")
+                return jsonify({
+                    "latest_timestamp": None,
+                    "success": False,
+                    "error": "Database not ready"
+                }), 503
+
             # Use a more robust session management approach
             session = db.session()
 
