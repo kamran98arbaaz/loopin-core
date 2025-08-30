@@ -181,6 +181,36 @@ def ensure_database_ready():
         logger.error(f"Database readiness check failed: {e}")
         return False
 
+def validate_database_type():
+    """Validate that the correct database type is being used."""
+    try:
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            logger.error("DATABASE_URL environment variable not set")
+            return False
+
+        # Parse the URL to check the scheme
+        from urllib.parse import urlparse
+        parsed = urlparse(database_url)
+
+        # Check if it's PostgreSQL
+        if parsed.scheme not in ('postgresql', 'postgres'):
+            if parsed.scheme in ('sqlite', 'sqlite3'):
+                logger.error("SQLite database detected - this will cause lock issues in production")
+                logger.error("Please configure PostgreSQL database for production use")
+                return False
+            else:
+                logger.error(f"Unsupported database type: {parsed.scheme}")
+                logger.error("Only PostgreSQL is supported for production")
+                return False
+
+        logger.info("Database type validation passed - using PostgreSQL")
+        return True
+
+    except Exception as e:
+        logger.error(f"Database type validation failed: {e}")
+        return False
+
 # SSL context configuration removed - psycopg2 handles SSL through connection parameters
 
 def test_ssl_connection(connection=None):

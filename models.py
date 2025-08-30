@@ -10,16 +10,19 @@ from sqlalchemy import Text
 import json
 from timezone_utils import UTC, IST, now_utc, to_ist, format_ist
 
-# Database-agnostic ARRAY type that falls back to JSON for SQLite
+# Database-agnostic ARRAY type that only works with PostgreSQL
 class DatabaseAgnosticArray(db.TypeDecorator):
     impl = Text
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
+        # Only support PostgreSQL - raise error for other databases
         if dialect.name == 'postgresql':
             return dialect.type_descriptor(ARRAY(db.String))
         else:
-            return dialect.type_descriptor(Text())
+            # Force PostgreSQL usage by raising an error for non-PostgreSQL databases
+            raise RuntimeError(f"DatabaseAgnosticArray only supports PostgreSQL. Detected: {dialect.name}. "
+                             "Please ensure DATABASE_URL points to PostgreSQL.")
 
     def process_bind_param(self, value, dialect):
         if value is None:
@@ -27,7 +30,8 @@ class DatabaseAgnosticArray(db.TypeDecorator):
         if dialect.name == 'postgresql':
             return value
         else:
-            return json.dumps(value)
+            # This should never be reached due to the check in load_dialect_impl
+            raise RuntimeError("DatabaseAgnosticArray requires PostgreSQL")
 
     def process_result_value(self, value, dialect):
         if value is None:
@@ -35,10 +39,8 @@ class DatabaseAgnosticArray(db.TypeDecorator):
         if dialect.name == 'postgresql':
             return value
         else:
-            try:
-                return json.loads(value)
-            except (json.JSONDecodeError, TypeError):
-                return []
+            # This should never be reached due to the check in load_dialect_impl
+            raise RuntimeError("DatabaseAgnosticArray requires PostgreSQL")
 
 
 class Update(db.Model):

@@ -196,7 +196,16 @@ def create_app(config_name=None):
     if os.getenv("FLASK_ENV") == "development":
         print(f"Using database: {database_url}")
 
-    # Validate database configuration
+    # Validate database type early in startup
+    from database import validate_database_type
+    if not validate_database_type():
+        if os.getenv("RENDER"):
+            logger.error("CRITICAL: Database type validation failed on Render")
+            raise RuntimeError("Database configuration error - check DATABASE_URL")
+        else:
+            logger.warning("Database type validation failed - using fallback configuration")
+
+    # Additional validation for SQLite detection
     parsed = urlparse(database_url)
     if parsed.scheme in ("sqlite", "sqlite3"):
         if os.getenv("RENDER"):

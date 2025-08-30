@@ -48,7 +48,14 @@ class ProductionConfig(Config):
     ENV = "production"
     DEBUG = False
     TESTING = False
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+
+    # Ensure PostgreSQL is used in production - no SQLite fallback
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable is required for production")
+    if database_url.startswith('sqlite'):
+        raise RuntimeError("SQLite database detected in production - PostgreSQL required")
+    SQLALCHEMY_DATABASE_URI = database_url
 
     # Render-optimized SQLAlchemy engine options
     SQLALCHEMY_ENGINE_OPTIONS = {
@@ -68,14 +75,35 @@ class DevelopmentConfig(Config):
     ENV = "development"
     DEBUG = True
     TESTING = False
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///loopin_dev.db")
+
+    # Use DATABASE_URL if available, otherwise allow SQLite for local development
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        if database_url.startswith('sqlite'):
+            print("WARNING: Using SQLite database in development - this may cause lock issues")
+        SQLALCHEMY_DATABASE_URI = database_url
+    else:
+        # Only use SQLite as fallback when no DATABASE_URL is set
+        SQLALCHEMY_DATABASE_URI = "sqlite:///loopin_dev.db"
+        print("WARNING: No DATABASE_URL set, using SQLite for development")
 
 class TestingConfig(Config):
     """Testing configuration."""
     ENV = "testing"
     DEBUG = True
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+
+    # Use PostgreSQL for testing if DATABASE_URL is available, otherwise use SQLite
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        if database_url.startswith('sqlite'):
+            print("WARNING: Using SQLite database in testing - this may cause lock issues")
+        SQLALCHEMY_DATABASE_URI = database_url
+    else:
+        # Only use SQLite memory database as last resort for testing
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        print("WARNING: No DATABASE_URL set for testing, using SQLite memory database")
+
     WTF_CSRF_ENABLED = False
 
 config = {
