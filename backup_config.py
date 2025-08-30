@@ -18,7 +18,7 @@ os.makedirs(BACKUP_TEMP_DIR, exist_ok=True)
 
 # Backup file patterns
 BACKUP_FILE_PREFIX = "loopin_backup_"
-BACKUP_FILE_SUFFIX = ".sql"  # Updated to SQL format for Railway compatibility
+BACKUP_FILE_SUFFIX = ".sql"  # Updated to SQL format for Render compatibility
 
 # Notification settings
 BACKUP_NOTIFICATION_EMAILS = os.getenv("BACKUP_NOTIFICATION_EMAILS", "").split(",")

@@ -53,7 +53,7 @@ def test_application():
         print("[OK] Socket.IO 'os' import error: FIXED")
         print("[OK] Backup system converted to .sql format: COMPLETED")
         print("[OK] All 'os' import issues: RESOLVED")
-        print("[OK] Application ready for Railway deployment")
+        print("[OK] Application ready for Render deployment")
 
         return True
 

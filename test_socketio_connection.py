@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Socket.IO Connection Test Script for Railway Deployment
+Socket.IO Connection Test Script for Render Deployment
 Tests WebSocket handshake and real-time functionality
 """
 
@@ -28,12 +28,12 @@ def test_socketio_connection():
     # Get configuration
     port = os.getenv("PORT", "8000")
     flask_env = os.getenv("FLASK_ENV", "development")
-    railway_env = os.getenv("RAILWAY_ENVIRONMENT")
+    render_env = os.getenv("RENDER")
 
     print("Configuration:")
     print(f"   PORT: {port}")
     print(f"   FLASK_ENV: {flask_env}")
-    print(f"   RAILWAY_ENVIRONMENT: {railway_env}")
+    print(f"   RENDER: {render_env}")
     print(f"   DATABASE_URL: {'***' if os.getenv('DATABASE_URL') else 'Not set'}")
 
     # Test 1: Health endpoint
@@ -41,10 +41,10 @@ def test_socketio_connection():
     print("-" * 30)
 
     try:
-        if railway_env:
-            # Use Railway domain if available
-            domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", f"localhost:{port}")
-            if "railway.app" in domain:
+        if render_env:
+            # Use Render domain if available
+            domain = os.getenv("RENDER_EXTERNAL_URL", f"localhost:{port}")
+            if "onrender.com" in domain:
                 health_url = f"https://{domain}/health"
             else:
                 health_url = f"http://localhost:{port}/health"
@@ -76,9 +76,9 @@ def test_socketio_connection():
         import socketio
 
         # Determine Socket.IO URL
-        if railway_env:
-            domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", f"localhost:{port}")
-            if "railway.app" in domain:
+        if render_env:
+            domain = os.getenv("RENDER_EXTERNAL_URL", f"localhost:{port}")
+            if "onrender.com" in domain:
                 socket_url = f"https://{domain}"
             else:
                 socket_url = f"http://localhost:{port}"
@@ -210,7 +210,7 @@ def test_socketio_connection():
         print("Install with: pip install websocket-client")
     except Exception as e:
         print(f"WebSocket handshake test failed: {e}")
-        print("This might be expected if WebSocket is blocked by Railway")
+        print("This might be expected if WebSocket is blocked by Render")
 
     print("\n" + "=" * 50)
     print("Socket.IO Connection Test Summary:")
@@ -218,7 +218,7 @@ def test_socketio_connection():
     print("Socket.IO client connection successful")
     print("Test message round-trip working")
     print("WebSocket handshake simulation completed")
-    print("\nYour Socket.IO setup is ready for Railway deployment!")
+    print("\nYour Socket.IO setup is ready for Render deployment!")
     print("=" * 50)
 
     return True

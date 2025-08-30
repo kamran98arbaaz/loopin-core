@@ -1,22 +1,22 @@
-# Gunicorn configuration optimized for Railway memory constraints
+# Gunicorn configuration optimized for Render memory constraints
 import multiprocessing
 import os
 
-# Railway-optimized worker configuration (memory-efficient)
-# Railway typically provides 512MB-1GB, so we need to be conservative
+# Render-optimized worker configuration (memory-efficient)
+# Render typically provides 512MB-1GB, so we need to be conservative
 cpu_count = multiprocessing.cpu_count()
 if cpu_count > 1:
-    workers = 2  # Fixed at 2 workers for Railway
+    workers = 2  # Fixed at 2 workers for Render
 else:
     workers = 1
 
 # Environment-specific configuration
-is_production = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("FLASK_ENV") == "production"
+is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
 if is_production:
     # Production optimizations
     loglevel = 'warning'  # Less verbose in production
     accesslog = None  # Disable access log in production
-    errorlog = None  # Disable error log in production (use Railway logs)
+    errorlog = None  # Disable error log in production (use Render logs)
 else:
     # Development settings
     loglevel = 'info'
@@ -34,7 +34,7 @@ max_requests = 500  # Restart worker after fewer requests
 max_requests_jitter = 50
 worker_connections = 100  # Reduce connections per worker
 
-# Railway-specific optimizations
+# Render-specific optimizations
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
 backlog = 128  # Smaller backlog
 graceful_timeout = 15  # Faster graceful shutdown

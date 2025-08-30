@@ -1,5 +1,5 @@
 """
-Railway-compatible backup system for LoopIn - No PostgreSQL client tools required
+Render-compatible backup system for LoopIn - No PostgreSQL client tools required
 """
 import os
 import json
@@ -25,8 +25,8 @@ class DatabaseBackupSystem:
         self.backup_dir.mkdir(exist_ok=True)
 
         # Environment detection
-        self.is_railway = self._detect_railway_environment()
-        self.is_production = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("FLASK_ENV") == "production"
+        self.is_render = self._detect_render_environment()
+        self.is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
         self.is_development = os.getenv("FLASK_ENV") == "development" or not self.is_production
 
         # Load backup configuration
@@ -34,14 +34,14 @@ class DatabaseBackupSystem:
 
         # Log only in development or for important events
         if self.is_development:
-            print(f"[OK] Database backup system initialized for {'Railway' if self.is_railway else 'standard'} environment")
+            print(f"[OK] Database backup system initialized for {'Render' if self.is_render else 'standard'} environment")
 
-    def _detect_railway_environment(self):
-        """Detect if we're running on Railway"""
+    def _detect_render_environment(self):
+        """Detect if we're running on Render"""
         return (
-            "railway" in self.database_url.lower() or
-            os.getenv("RAILWAY_ENVIRONMENT") is not None or
-            os.getenv("RAILWAY_PROJECT_ID") is not None
+            "render" in self.database_url.lower() or
+            os.getenv("RENDER") is not None or
+            os.getenv("RENDER_SERVICE_ID") is not None
         )
 
     def _load_backup_config(self):
@@ -69,7 +69,7 @@ class DatabaseBackupSystem:
             backup_path = self.backup_dir / backup_filename
 
             if self.is_development:
-                print(f"[BACKUP] Creating Railway-compatible SQL backup: {backup_path}")
+                print(f"[BACKUP] Creating Render-compatible SQL backup: {backup_path}")
 
             # Create SQL dump file
             with open(backup_path, 'w', encoding='utf-8') as f:
@@ -79,7 +79,7 @@ class DatabaseBackupSystem:
                 f.write(f"-- Type: {backup_type}\n")
                 f.write(f"-- Environment: {'production' if self.is_production else 'development'}\n")
                 f.write(f"-- Version: 4.0 (PostgreSQL Format)\n")
-                f.write("-- Railway Compatible: Yes\n\n")
+                f.write("-- Render Compatible: Yes\n\n")
 
                 # PostgreSQL doesn't need to disable foreign key checks like MySQL
                 # Foreign key constraints are automatically deferred in transactions
@@ -418,7 +418,7 @@ class DatabaseBackupSystem:
             print("[SUMMARY]:")
             print("   [OK] SQL backup executed")
             print("   [OK] Database tables restored")
-            print("   [OK] Railway-compatible SQL format used")
+            print("   [OK] Render-compatible SQL format used")
 
             return True
 

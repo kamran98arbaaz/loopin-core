@@ -79,6 +79,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Set up advanced logging configuration
+try:
+    from logging_config import setup_logging
+    # This will be called after app creation
+except ImportError:
+    logger.warning("logging_config module not found - using basic logging")
+
 migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = 'login'
@@ -94,7 +101,7 @@ def create_app(config_name=None):
     app.register_blueprint(read_logs_bp)
     # Register new API blueprint (first milestone)
     try:
-        from api.updates import bp as api_bp
+        from api.updates import updates_bp as api_bp
         app.register_blueprint(api_bp)
     except Exception:
         # Blueprint registration should not break app startup if something is off
@@ -109,6 +116,7 @@ def create_app(config_name=None):
             print("SUCCESS: Socket.IO blueprint registered successfully")
     except Exception as e:
         # Socket.IO registration should not break app startup if something is off
+        logger.error(f"Socket.IO blueprint registration failed: {e}")
         if os.getenv("FLASK_ENV") == "development":
             print(f"WARNING: Socket.IO blueprint registration failed: {e}")
             import traceback
@@ -134,8 +142,8 @@ def create_app(config_name=None):
     # CORS configuration for Socket.IO
     app.config["CORS_HEADERS"] = "Content-Type"
 
-    # Secure session configuration - adjust for Railway
-    is_production = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("FLASK_ENV") == "production"
+    # Secure session configuration - adjust for Render
+    is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
     if is_production:
         app.config["SESSION_COOKIE_SECURE"] = True  # Only send cookies over HTTPS
     else:
@@ -144,23 +152,22 @@ def create_app(config_name=None):
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
     app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # Session timeout in seconds
 
-    # Railway-specific configurations
-    if os.getenv("RAILWAY_ENVIRONMENT"):
-        app.config["SERVER_NAME"] = None  # Disable SERVER_NAME for Railway
-        app.config["PREFERRED_URL_SCHEME"] = "https"  # Force HTTPS on Railway
+    # Render-specific configurations
+    if os.getenv("RENDER"):
+        app.config["SERVER_NAME"] = None  # Disable SERVER_NAME for Render
+        app.config["PREFERRED_URL_SCHEME"] = "https"  # Force HTTPS on Render
 
-        # Additional Railway configurations for Socket.IO
-        app.config["RAILWAY_STATIC_URL"] = os.getenv("RAILWAY_STATIC_URL", "")
+        # Additional Render configurations for Socket.IO
+        app.config["RENDER_STATIC_URL"] = os.getenv("RENDER_EXTERNAL_URL", "")
 
-        # Log Railway environment info (only in development)
+        # Log Render environment info (only in development)
         if os.getenv("FLASK_ENV") == "development":
-            print(f"🚂 Railway Environment: {os.getenv('RAILWAY_ENVIRONMENT')}")
-            print(f"🚂 Railway Project ID: {os.getenv('RAILWAY_PROJECT_ID', 'Not set')}")
-            print(f"🚂 Railway Service ID: {os.getenv('RAILWAY_SERVICE_ID', 'Not set')}")
-            print(f"🚂 Railway Public Domain: {os.getenv('RAILWAY_PUBLIC_DOMAIN', 'Not set')}")
-            print(f"🚂 Railway WebSocket Support: {os.getenv('RAILWAY_WEBSOCKET_SUPPORT', 'Not set')}")
-            print(f"🚂 Railway Git Commit SHA: {os.getenv('RAILWAY_GIT_COMMIT_SHA', 'Not set')}")
-            print(f"🚂 Railway Git Branch: {os.getenv('RAILWAY_GIT_BRANCH', 'Not set')}")
+            print(f"🎨 Render Environment: {os.getenv('RENDER')}")
+            print(f"🎨 Render Service ID: {os.getenv('RENDER_SERVICE_ID', 'Not set')}")
+            print(f"🎨 Render Service Name: {os.getenv('RENDER_SERVICE_NAME', 'Not set')}")
+            print(f"🎨 Render External URL: {os.getenv('RENDER_EXTERNAL_URL', 'Not set')}")
+            print(f"🎨 Render Git Commit: {os.getenv('RENDER_GIT_COMMIT', 'Not set')}")
+            print(f"🎨 Render Git Branch: {os.getenv('RENDER_GIT_BRANCH', 'Not set')}")
 
     # Database configuration
     database_url = os.getenv("DATABASE_URL")
@@ -184,11 +191,11 @@ def create_app(config_name=None):
         ssl_config = {}
 
         # Set SSL mode with Render-friendly defaults
-        ssl_mode = os.getenv("PG_SSLMODE", "require")  # Default to 'require' for Render
+        ssl_mode = os.getenv("PG_SSLMODE", "prefer")  # Default to 'prefer' for Render
         ssl_config["sslmode"] = ssl_mode
         logger.info(f"PostgreSQL SSL mode: {ssl_mode}")
 
-        # Additional SSL parameters for better compatibility
+        # Render-specific SSL parameters
         if os.getenv("PG_SSLROOTCERT"):
             ssl_config["sslrootcert"] = os.getenv("PG_SSLROOTCERT")
         if os.getenv("PG_SSLCERT"):
@@ -196,18 +203,18 @@ def create_app(config_name=None):
         if os.getenv("PG_SSLKEY"):
             ssl_config["sslkey"] = os.getenv("PG_SSLKEY")
 
-        # Set connection arguments
+        # Set connection arguments for Render
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "connect_args": ssl_config,
             # Render-specific connection pool settings
             "pool_pre_ping": True,
             "pool_recycle": 300,
-            "pool_timeout": 20,  # Shorter timeout for Render
-            "pool_size": 5,      # Smaller pool for Render's limits
-            "max_overflow": 10,  # Allow some overflow
+            "pool_timeout": 30,  # Longer timeout for Render
+            "pool_size": 10,     # Larger pool for Render's better resources
+            "max_overflow": 20,  # More overflow for Render
         }
 
-        logger.info(f"SQLAlchemy engine options configured for PostgreSQL")
+        logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL")
     else:
         # Non-PostgreSQL databases use default settings
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -222,18 +229,25 @@ def create_app(config_name=None):
             print("Database configured successfully")
 
         # Verify database connection and table reflection
+        db_verification_success = False
         try:
             # Test basic connection
             db.session.execute(text("SELECT 1"))
             logger.info("✅ Database connection successful")
 
-            # Test SSL connection if using PostgreSQL
-            from database import test_ssl_connection
-            ssl_test_result = test_ssl_connection()
-            if ssl_test_result:
-                logger.info("✅ SSL connection test passed")
-            else:
-                logger.warning("⚠️ SSL connection test failed - this may cause issues")
+            # Test SSL connection if using PostgreSQL (in separate session to avoid transaction abortion)
+            ssl_test_result = False
+            try:
+                from database import test_ssl_connection
+                # Create a new session for SSL testing to avoid contaminating the main session
+                with db.engine.connect() as test_conn:
+                    ssl_test_result = test_ssl_connection()
+                if ssl_test_result:
+                    logger.info("✅ SSL connection test passed")
+                else:
+                    logger.warning("⚠️ SSL connection test failed - this may cause issues")
+            except Exception as ssl_e:
+                logger.warning(f"⚠️ SSL test error (non-critical): {ssl_e}")
 
             # Check if tables exist
             from sqlalchemy import inspect
@@ -254,10 +268,24 @@ def create_app(config_name=None):
             user_count = User.query.count()
             logger.info(f"👥 Users table has {user_count} records")
 
+            db_verification_success = True
+
         except Exception as e:
             logger.error(f"❌ Database verification failed: {e}")
             if os.getenv("FLASK_ENV") == "development":
                 print(f"❌ Database verification failed: {e}")
+
+            # Clean up the session on error
+            try:
+                db.session.rollback()
+                db.session.close()
+            except:
+                pass
+
+        # If database verification failed, don't continue with app startup
+        if not db_verification_success:
+            logger.error("❌ Database verification failed - aborting app startup")
+            raise RuntimeError("Database verification failed - cannot start application")
 
     # Activity Logging Helper
     def log_activity(action, entity_type, entity_id, entity_title=None, details=None):
@@ -2139,13 +2167,13 @@ def create_app(config_name=None):
 
         # Socket.IO CORS is handled by the Socket.IO extension, don't override here
 
-        # Add Railway-specific headers (only essential ones in production)
-        if os.getenv('RAILWAY_ENVIRONMENT'):
-            is_production = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("FLASK_ENV") == "production"
+        # Add Render-specific headers (only essential ones in production)
+        if os.getenv('RENDER'):
+            is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
             is_development = os.getenv("FLASK_ENV") == "development" or not is_production
 
             # Essential headers for all environments
-            response.headers['X-Railway-Environment'] = os.getenv('RAILWAY_ENVIRONMENT')
+            response.headers['X-Render-Environment'] = os.getenv('RENDER')
             response.headers['X-SocketIO-Support'] = 'enabled'
             response.headers['X-WebSocket-Support'] = 'enabled'
             response.headers['X-Transport-Support'] = 'websocket,polling'
@@ -2153,11 +2181,11 @@ def create_app(config_name=None):
 
             # Add debug headers only in development
             if is_development:
-                response.headers['X-Railway-Project-ID'] = os.getenv('RAILWAY_PROJECT_ID', '')
-                response.headers['X-Railway-Service-ID'] = os.getenv('RAILWAY_SERVICE_ID', '')
-                response.headers['X-Railway-Public-Domain'] = os.getenv('RAILWAY_PUBLIC_DOMAIN', '')
-                response.headers['X-Railway-Git-Commit-SHA'] = os.getenv('RAILWAY_GIT_COMMIT_SHA', '')
-                response.headers['X-Railway-Git-Branch'] = os.getenv('RAILWAY_GIT_BRANCH', '')
+                response.headers['X-Render-Service-ID'] = os.getenv('RENDER_SERVICE_ID', '')
+                response.headers['X-Render-Service-Name'] = os.getenv('RENDER_SERVICE_NAME', '')
+                response.headers['X-Render-External-URL'] = os.getenv('RENDER_EXTERNAL_URL', '')
+                response.headers['X-Render-Git-Commit'] = os.getenv('RENDER_GIT_COMMIT', '')
+                response.headers['X-Render-Git-Branch'] = os.getenv('RENDER_GIT_BRANCH', '')
                 response.headers['X-Debug-Mode'] = str(debug_mode).lower()
                 response.headers['X-Timestamp'] = now_utc().isoformat()
                 response.headers['X-Status'] = 'healthy'
@@ -2166,6 +2194,71 @@ def create_app(config_name=None):
                 response.headers['X-Debug-Info'] = 'Socket.IO debugging enabled'
 
         return response
+
+    # Global error handlers to prevent worker crashes
+    @app.errorhandler(404)
+    def handle_404_error(error):
+        """Handle 404 Not Found Error"""
+        logger.warning(f"404 Not Found: {error}")
+        return jsonify({
+            'error': 'Not Found',
+            'message': 'The requested resource was not found.'
+        }), 404
+
+    @app.errorhandler(500)
+    def handle_500_error(error):
+        """Handle 500 Internal Server Error"""
+        logger.error(f"500 Internal Server Error: {error}")
+        db.session.rollback()  # Rollback any pending transactions
+        return jsonify({
+            'error': 'Internal Server Error',
+            'message': 'An unexpected error occurred. Please try again later.'
+        }), 500
+
+    @app.errorhandler(Exception)
+    def handle_unexpected_error(error):
+        """Handle unexpected errors to prevent worker crashes"""
+        logger.error(f"Unexpected error: {error}")
+        try:
+            db.session.rollback()  # Rollback any pending transactions
+        except:
+            pass
+        return jsonify({
+            'error': 'Unexpected Error',
+            'message': 'An unexpected error occurred.'
+        }), 500
+
+    # Socket.IO error handler
+    @socketio.on_error
+    def handle_socketio_error(e):
+        """Handle Socket.IO errors"""
+        logger.error(f"Socket.IO error: {e}")
+        try:
+            db.session.rollback()
+        except:
+            pass
+
+    # Database teardown for request context
+    @app.teardown_request
+    def teardown_request(exception):
+        """Clean up database session after each request"""
+        if exception:
+            logger.error(f"Request exception: {exception}")
+            try:
+                db.session.rollback()
+            except:
+                pass
+        try:
+            db.session.remove()
+        except:
+            pass
+
+    # Set up logging after app creation
+    try:
+        from logging_config import setup_logging
+        setup_logging(app)
+    except Exception as e:
+        logger.warning(f"Failed to set up advanced logging: {e}")
 
     return app
 
@@ -2187,6 +2280,7 @@ if __name__ == "__main__":
         # Use socketio.run for proper Socket.IO server startup
         if os.getenv("FLASK_ENV") == "development":
             print("🚀 Starting Socket.IO server...")
+        # Configure Socket.IO with proper CORS and WebSocket settings
         socketio.run(
             app,
             host="0.0.0.0",
@@ -2197,25 +2291,54 @@ if __name__ == "__main__":
             # Additional Socket.IO server options for Railway compatibility
             keyfile=None,
             certfile=None,
+            cors_allowed_origins=[
+                "https://loopin-home-production.up.railway.app",
+                "https://loopin-core.onrender.com",
+                "https://*.up.railway.app",
+                "https://*.onrender.com",
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+                "http://localhost:5000",
+                "http://127.0.0.1:5000"
+            ] if os.getenv("RENDER") else "*",
             server_options={
                 'ping_timeout': 60,
                 'ping_interval': 25,
                 'max_http_buffer_size': 1000000,
                 'allow_upgrades': True,
-                'transports': ['polling', 'websocket']
+                'transports': ['polling', 'websocket'],
+                'upgrade_timeout': 10000,  # 10 second upgrade timeout
+                'close_timeout': 60,
+                'heartbeat_interval': 25,
+                'heartbeat_timeout': 60,
+                'max_connections': 1000,
+                'compression': True,
+                'compression_threshold': 1024,
+                # Fix for WebSocket handshake issues
+                'handle_sigint': True,
+                'always_connect': False,
+                'jsonp': False,
+                'cookie': None
             }
         )
     except Exception as e:
+        logger.error(f"Failed to start Socket.IO server: {e}")
         if os.getenv("FLASK_ENV") == "development":
             print(f"❌ Failed to start Socket.IO server: {e}")
             import traceback
             print(f"❌ Full Socket.IO error: {traceback.format_exc()}")
+
         # Fallback to regular Flask app if Socket.IO fails
         if os.getenv("FLASK_ENV") == "development":
             print("🔄 Falling back to regular Flask app...")
+
         try:
             app.run(host="0.0.0.0", port=port, debug=debug_mode)
         except Exception as fallback_error:
+            logger.error(f"Even fallback failed: {fallback_error}")
             if os.getenv("FLASK_ENV") == "development":
                 print(f"❌ Even fallback failed: {fallback_error}")
-            raise
+            # Don't raise the exception to prevent worker crash
+            # Instead, log the error and exit gracefully
+            import sys
+            sys.exit(1)

@@ -21,8 +21,8 @@ def init_socketio(socketio_instance, app):
     global _socketio
     _socketio = socketio_instance
 
-    logger.info("INFO: Socket.IO initialized for Railway deployment")
-    print("INFO: Socket.IO initialized for Railway deployment")
+    logger.info("INFO: Socket.IO initialized for Render deployment")
+    print("INFO: Socket.IO initialized for Render deployment")
 
     # Log Socket.IO configuration
     logger.info(f"CONFIG: Socket.IO async mode: {socketio_instance.async_mode}")
@@ -30,14 +30,15 @@ def init_socketio(socketio_instance, app):
     print(f"CONFIG: Socket.IO async mode: {socketio_instance.async_mode}")
     print(f"CONFIG: Socket.IO server initialized successfully")
 
-# Socket.IO event handlers - defined at module level for Railway compatibility
+# Socket.IO event handlers - defined at module level for Render compatibility
 
 @socketio.on('connect')
 def handle_connect(auth=None):
     """Handle client connection"""
+    db_session = None
     try:
         # Determine environment for conditional logging
-        is_production = os.getenv("RAILWAY_ENVIRONMENT") == "production" or os.getenv("FLASK_ENV") == "production"
+        is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
         is_development = os.getenv("FLASK_ENV") == "development" or not is_production
 
         # Log basic connection info (only in development or for important events)
@@ -49,8 +50,11 @@ def handle_connect(auth=None):
         user_id = session.get('user_id')
         if user_id:
             try:
+                # Create a new database session to avoid transaction abortion issues
+                db_session = db.create_scoped_session()
+
                 # Get user from database with error handling
-                user = User.query.get(user_id)
+                user = db_session.query(User).get(user_id)
                 if user:
                     # Join user-specific room for private notifications
                     join_room(f"user_{user.id}")
@@ -68,6 +72,13 @@ def handle_connect(auth=None):
             except Exception as db_e:
                 logger.error(f"Database error during user lookup: {db_e}")
                 # Continue as guest if database fails
+            finally:
+                # Always close the session
+                if db_session:
+                    try:
+                        db_session.close()
+                    except:
+                        pass
 
         # Guest users join general room
         join_room('guests')
@@ -86,7 +97,8 @@ def handle_connect(auth=None):
             'error': str(e)
         })
         logger.error(f"Socket.IO connection error: {e}")
-        print(f"Socket.IO connection error: {e}")
+        if is_development:
+            print(f"Socket.IO connection error: {e}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -140,13 +152,17 @@ def handle_leave_process(data):
 @socketio.on('mark_as_read')
 def handle_mark_read(data):
     """Mark an update as read for the current user"""
+    db_session = None
     try:
         user_id = session.get('user_id')
         if not user_id:
             emit('error', {'message': 'Authentication required'})
             return
 
-        user = User.query.get(user_id)
+        # Create a new database session to avoid transaction abortion issues
+        db_session = db.create_scoped_session()
+
+        user = db_session.query(User).get(user_id)
         if not user:
             emit('error', {'message': 'User not found'})
             return
@@ -157,7 +173,7 @@ def handle_mark_read(data):
             return
 
         # Check if already marked as read
-        existing_log = ReadLog.query.filter_by(
+        existing_log = db_session.query(ReadLog).filter_by(
             update_id=update_id,
             user_id=user.id
         ).first()
@@ -179,8 +195,8 @@ def handle_mark_read(data):
                 ip_address=client_ip,
                 user_agent=user_agent
             )
-            db.session.add(read_log)
-            db.session.commit()
+            db_session.add(read_log)
+            db_session.commit()
 
             # Emit to all users that this update was read
             emit('update_read', {
@@ -191,51 +207,79 @@ def handle_mark_read(data):
             }, broadcast=True)
 
             emit('success', {'message': 'Update marked as read'})
-            print(f"Update {update_id} marked as read by {user.username}")
+            if os.getenv("FLASK_ENV") == "development":
+                print(f"Update {update_id} marked as read by {user.username}")
         else:
             emit('info', {'message': 'Update already marked as read'})
 
     except Exception as e:
         # Handle database transaction errors
-        try:
-            db.session.rollback()
-        except:
-            pass
+        if db_session:
+            try:
+                db_session.rollback()
+                db_session.close()
+            except:
+                pass
 
         emit('error', {'message': f'Error marking as read: {str(e)}'})
-        print(f"Error marking update as read: {e}")
+        logger.error(f"Error marking update as read: {e}")
+        if os.getenv("FLASK_ENV") == "development":
+            print(f"Error marking update as read: {e}")
+    finally:
+        # Always close the session
+        if db_session:
+            try:
+                db_session.close()
+            except:
+                pass
 
 @socketio.on('get_unread_count')
 def handle_get_unread_count():
     """Get unread count for current user"""
+    db_session = None
     try:
         user_id = session.get('user_id')
         if not user_id:
             emit('unread_count', {'count': 0})
             return
 
-        user = User.query.get(user_id)
+        # Create a new database session to avoid transaction abortion issues
+        db_session = db.create_scoped_session()
+
+        user = db_session.query(User).get(user_id)
         if not user:
             emit('unread_count', {'count': 0})
             return
 
         # Count updates that haven't been read by this user
-        unread_count = db.session.query(Update).outerjoin(
+        unread_count = db_session.query(Update).outerjoin(
             ReadLog,
             (Update.id == ReadLog.update_id) & (ReadLog.user_id == user.id)
         ).filter(ReadLog.id.is_(None)).count()
 
         emit('unread_count', {'count': unread_count})
-        print(f"Unread count for {user.username}: {unread_count}")
+        if os.getenv("FLASK_ENV") == "development":
+            print(f"Unread count for {user.username}: {unread_count}")
     except Exception as e:
         # Handle database transaction errors
-        try:
-            db.session.rollback()
-        except:
-            pass
+        if db_session:
+            try:
+                db_session.rollback()
+                db_session.close()
+            except:
+                pass
 
         emit('error', {'message': f'Error getting unread count: {str(e)}'})
-        print(f"Error getting unread count: {e}")
+        logger.error(f"Error getting unread count: {e}")
+        if os.getenv("FLASK_ENV") == "development":
+            print(f"Error getting unread count: {e}")
+    finally:
+        # Always close the session
+        if db_session:
+            try:
+                db_session.close()
+            except:
+                pass
 
 @socketio.on('subscribe_to_updates')
 def handle_subscribe_updates(data=None):
