@@ -41,11 +41,13 @@ class ProductionConfig(Config):
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,      # Enable connection health checks
         "pool_recycle": 300,        # Recycle connections after 5 minutes
-        "pool_timeout": 20,         # Connection timeout after 20 seconds (Render-friendly)
-        "max_overflow": 10,         # Maximum number of connections to overflow
-        "pool_size": 5,            # Base number of connections in the pool (Render limits)
-        "echo": False,             # Don't log all SQL statements in production
-        "echo_pool": False         # Don't log connection pool operations
+        "pool_timeout": 30,         # Increased timeout for Render
+        "max_overflow": 5,          # Reduced overflow for Render limits
+        "pool_size": 5,            # Base pool size for Render
+        "echo": False,             # Don't log SQL statements in production
+        "echo_pool": False,        # Don't log pool operations
+        "pool_use_lifo": True,     # Use LIFO to reduce number of connections
+        "pool_reset_on_return": "rollback"  # Reset connection state on return
     }
 
 class DevelopmentConfig(Config):

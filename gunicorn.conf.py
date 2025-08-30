@@ -35,7 +35,64 @@ max_requests_jitter = 50
 worker_connections = 100  # Reduce connections per worker
 
 # Render-specific optimizations
+import multiprocessing
+import os
+
+# Bind to the port provided by Render
 bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
+
+# Worker configuration
+workers = multiprocessing.cpu_count() * 2 + 1
+threads = 4
+worker_class = 'gevent'  # Use gevent for better async performance
+worker_connections = 1000
+
+# Timeouts
+timeout = 120
+keepalive = 5
+graceful_timeout = 30
+
+# SSL Configuration (handled by Render)
+keyfile = None
+certfile = None
+
+# Logging
+accesslog = '-'
+errorlog = '-'
+loglevel = 'info'
+
+# Process naming
+proc_name = 'loopin-gunicorn'
+
+# Performance tuning
+worker_tmp_dir = '/dev/shm'  # Use memory for temp files
+max_requests = 1000
+max_requests_jitter = 50
+backlog = 2048
+
+# Server mechanics
+daemon = False
+pidfile = None
+umask = 0
+user = None
+group = None
+
+# SSL Configuration
+ssl_version = 'TLS'
+cert_reqs = 0  # SSL_NONE
+
+# Hook functions
+def on_starting(server):
+    """Log when the server starts"""
+    server.log.info("Starting Gunicorn with gevent worker")
+
+def on_reload(server):
+    """Log when the server reloads"""
+    server.log.info("Reloading Gunicorn workers")
+
+def child_exit(server, worker):
+    """Log when a worker exits"""
+    server.log.info(f"Worker {worker.pid} exited")
 backlog = 128  # Smaller backlog
 graceful_timeout = 15  # Faster graceful shutdown
 

@@ -3,6 +3,19 @@ let socket;
 let notifications = [];
 let unreadCount = 0;
 
+// Performance optimization: Debounce function
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 // Initialize Socket.IO connection
 function initializeSocketIO() {
     console.log('🔌 Initializing Socket.IO connection...');
@@ -18,36 +31,33 @@ function initializeSocketIO() {
         console.log('🔗 Connecting to Socket.IO at:', socketUrl);
 
         socket = io(socketUrl, {
-            transports: ['websocket', 'polling'], // Prioritize WebSocket for Railway
-            timeout: 20000, // Increased timeout
-            forceNew: false, // Don't force new connection
+            transports: ['websocket', 'polling'], // Try WebSocket first, fallback to polling
+            timeout: 30000, // Increased timeout for stability
+            forceNew: true, // Force new connection to avoid stale connections
             reconnection: true,
-            reconnectionAttempts: 15, // More reconnection attempts for Railway
+            reconnectionAttempts: Infinity, // Keep trying to reconnect
             reconnectionDelay: 1000,
-            maxReconnectionAttempts: 15,
-            upgrade: true, // Allow transport upgrade
-            rememberUpgrade: true, // Remember transport upgrade
-            secure: window.location.protocol === 'https:', // Match protocol
-            rejectUnauthorized: false, // For development
-            // Railway-specific optimizations
-            path: '/socket.io', // Explicit Socket.IO path
-            query: {}, // No additional query parameters
-            extraHeaders: {}, // No extra headers
-            // Better error handling
+            reconnectionDelayMax: 5000,
             randomizationFactor: 0.5,
-            // Railway-specific connection settings
-            pingTimeout: 60000, // Match server ping timeout
-            pingInterval: 25000, // Match server ping interval
-            // Add connection stability options
-            closeOnBeforeunload: false, // Prevent connection drops
-            autoConnect: true, // Auto-connect on page load
-            // Socket.IO v4 compatibility settings
-            forceBase64: false, // Use binary when possible
-            timestampRequests: true, // Add timestamps to prevent caching
-            timestampParam: 't', // Timestamp parameter name
-            // Add Railway-specific headers for debugging
+            secure: window.location.protocol === 'https:',
+            rejectUnauthorized: false,
+            autoConnect: true,
+            path: '/socket.io',
+            upgrade: true,
+            rememberUpgrade: true,
+            pingTimeout: 60000,
+            pingInterval: 25000,
+            // Error recovery settings
+            closeOnBeforeunload: false,
+            retries: 3,
+            // Performance optimizations
+            perMessageDeflate: true,
+            httpCompression: true,
+            forceBase64: false,
+            // Session management
             auth: {
                 timestamp: Date.now(),
+                sessionId: sessionStorage.getItem('socketSessionId') || Date.now().toString(),
                 userAgent: navigator.userAgent.substring(0, 100),
                 protocol: window.location.protocol,
                 host: window.location.host
@@ -170,25 +180,74 @@ function updateNotificationsPanel() {
     });
 }
 
-// Create a notification element
+// Create a notification element with optimized event handling
 function createNotificationElement(notification, index) {
     const div = document.createElement('div');
     div.className = `notification-item ${notification.unread ? 'unread' : ''}`;
-    div.onclick = () => handleNotificationClick(notification, index);
     
-    const time = new Date(notification.timestamp).toLocaleTimeString();
+    // Use data attributes for better performance
+    div.dataset.notificationId = notification.id;
+    div.dataset.notificationIndex = index;
     
-    div.innerHTML = `
-        <div class="notification-title">${notification.title}</div>
-        <div class="notification-message">${notification.message}</div>
-        <div class="notification-time">${time}</div>
-    `;
+    // Format time with optimization for performance
+    const time = formatNotificationTime(notification.timestamp);
+    
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    
+    const title = document.createElement('div');
+    title.className = 'notification-title';
+    title.textContent = notification.title;
+    fragment.appendChild(title);
+    
+    const message = document.createElement('div');
+    message.className = 'notification-message';
+    message.textContent = notification.message;
+    fragment.appendChild(message);
+    
+    const timeEl = document.createElement('div');
+    timeEl.className = 'notification-time';
+    timeEl.textContent = time;
+    fragment.appendChild(timeEl);
+    
+    div.appendChild(fragment);
+    
+    // Add touch feedback
+    div.addEventListener('touchstart', () => {
+        div.classList.add('touched');
+    }, { passive: true });
+    
+    div.addEventListener('touchend', () => {
+        div.classList.remove('touched');
+    }, { passive: true });
     
     return div;
 }
 
-// Handle notification click
-function handleNotificationClick(notification, index) {
+// Optimize time formatting
+function formatNotificationTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    
+    return date.toLocaleDateString();
+}
+
+// Handle notification click with debouncing and event delegation
+function handleNotificationClick(event) {
+    const item = event.target.closest('.notification-item');
+    if (!item) return;
+    
+    const index = parseInt(item.dataset.notificationIndex, 10);
+    const notification = notifications[index];
+    if (!notification) return;
     // Mark as read
     if (notification.unread) {
         notification.unread = false;

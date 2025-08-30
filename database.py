@@ -14,22 +14,33 @@ logger = logging.getLogger(__name__)
 @contextmanager
 def db_session() -> Generator:
     """Provide a transactional scope around a series of operations."""
-    logger.info("Starting database session")
+    logger.debug("Starting database session")
+    session = db.session()
     try:
-        yield db.session
-        logger.info("Committing database transaction")
-        db.session.commit()
+        # Verify connection is active
+        session.execute(text('SELECT 1'))
+        yield session
+        logger.debug("Committing database transaction")
+        session.commit()
     except SQLAlchemyError as e:
         logger.error(f"Database error: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
         if hasattr(e, 'orig'):
             logger.error(f"Original error: {e.orig}")
-        db.session.rollback()
-        current_app.logger.error(f"Database error: {str(e)}")
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        if 'lock' in str(e).lower() or 'deadlock' in str(e).lower():
+            logger.warning("Lock-related error detected, cleaning up session")
+            cleanup_db()
         raise
     finally:
-        logger.info("Closing database session")
-        db.session.close()
+        logger.debug("Closing database session")
+        try:
+            session.close()
+        except Exception:
+            pass
 
 def init_db(app):
     """Initialize database with app context."""

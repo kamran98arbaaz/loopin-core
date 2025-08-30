@@ -20,15 +20,26 @@ def init_socketio(socketio_instance, app):
     """Initialize Socket.IO with the Flask app"""
     global _socketio
     _socketio = socketio_instance
+    
+    # Configure SocketIO for Render deployment
+    socketio_instance.server_options.update({
+        'cors_allowed_origins': '*',  # Configure as needed for production
+        'ping_timeout': 60,           # Increase ping timeout
+        'ping_interval': 25,          # Adjust ping interval
+        'max_http_buffer_size': 1e8,  # Increase buffer size
+        'async_mode': 'gevent',       # Use gevent for better performance
+        'transports': ['websocket', 'polling']  # Prefer WebSocket, fallback to polling
+    })
 
-    logger.info("INFO: Socket.IO initialized for Render deployment")
-    print("INFO: Socket.IO initialized for Render deployment")
-
-    # Log Socket.IO configuration
-    logger.info(f"CONFIG: Socket.IO async mode: {socketio_instance.async_mode}")
-    logger.info(f"CONFIG: Socket.IO server options: {getattr(socketio_instance, 'server_options', {})}")
-    print(f"CONFIG: Socket.IO async mode: {socketio_instance.async_mode}")
-    print(f"CONFIG: Socket.IO server initialized successfully")
+    logger.info("Socket.IO initialized with optimized settings for Render deployment")
+    logger.info(f"Socket.IO async mode: {socketio_instance.async_mode}")
+    logger.info(f"Socket.IO transport options: {socketio_instance.server_options.get('transports')}")
+    
+    # Enable WebSocket compression if available
+    if hasattr(socketio_instance, 'server'):
+        socketio_instance.server.eio.ws = True
+        socketio_instance.server.eio.compression = True
+        logger.info("WebSocket compression enabled")
 
 # Socket.IO event handlers - defined at module level for Render compatibility
 

@@ -42,4 +42,5 @@ def setup_logging(app):
     app.logger.setLevel(logging.INFO)
     
     # Log application startup
-    app.logger.info(f"Starting {app.config['APP_NAME']} in {app.config['ENV']} mode")
+    env = app.config.get('ENV', os.getenv('FLASK_ENV', 'production'))
+    app.logger.info(f"Starting {app.config.get('APP_NAME', 'LoopIn')} in {env} mode")

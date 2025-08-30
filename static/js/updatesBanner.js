@@ -1,10 +1,14 @@
 // Updates Banner System - Shows recent updates from past 24hrs when bell icon is clicked
+"use strict";
 
 class UpdatesBanner {
     constructor() {
         this.banner = null;
         this.bannerList = null;
         this.isVisible = false;
+        this.clickTimeout = null;
+        this.touchStartY = null;
+        this.updateCheckTimeout = null;
         this.init();
     }
 
@@ -21,19 +25,44 @@ class UpdatesBanner {
         this.banner = document.getElementById('updates-banner');
         this.bannerList = document.getElementById('updates-banner-list');
         
-        // Close banner when clicking outside
+        // Implement event delegation for all click handlers
         document.addEventListener('click', (event) => {
+            // Handle outside clicks
             const bellContainer = document.querySelector('.notification-container');
             if (this.isVisible && bellContainer && !bellContainer.contains(event.target)) {
                 this.closeBanner();
+                return;
             }
-        });
+
+            // Handle update item clicks
+            if (event.target.closest('.banner-update-item')) {
+                const item = event.target.closest('.banner-update-item');
+                const updateId = item.getAttribute('data-update-id');
+                if (updateId) {
+                    this.handleUpdateClick(updateId);
+                }
+                return;
+            }
+
+            // Handle "View All" clicks
+            if (event.target.closest('.banner-view-all')) {
+                this.handleViewAllClick();
+                return;
+            }
+        }, { passive: true }); // Add passive flag for better scroll performance
+
+        // Implement touch events for mobile
+        if ('ontouchstart' in window) {
+            document.addEventListener('touchstart', this.handleTouch.bind(this), { passive: true });
+        }
 
         // Check for recent updates and show badge
         this.checkForRecentUpdatesAndShowBadge();
         
-        // Set up periodic checking (every 5 minutes)
-        setInterval(() => this.checkForRecentUpdatesAndShowBadge(), 5 * 60 * 1000);
+        // Set up periodic checking with random jitter to prevent thundering herd
+        const interval = 5 * 60 * 1000; // 5 minutes
+        const jitter = Math.random() * 30000; // Random delay up to 30 seconds
+        setInterval(() => this.checkForRecentUpdatesAndShowBadge(), interval + jitter);
     }
 
     async toggleBanner() {
@@ -47,15 +76,37 @@ class UpdatesBanner {
     async showBanner() {
         if (!this.banner || !this.bannerList) return;
 
+        // Show loading state immediately
+        this.bannerList.innerHTML = `
+            <div class="banner-loading">
+                <p style="text-align: center; color: var(--gray-500); padding: var(--space-4);">
+                    Loading updates...
+                </p>
+            </div>
+        `;
+        this.banner.style.display = 'block';
+        this.isVisible = true;
+
         try {
-            // Fetch recent updates from the past 24 hours
-            const response = await fetch('/api/recent-updates');
+            // Add cache busting and timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const response = await fetch('/api/recent-updates?' + new URLSearchParams({
+                _: Date.now() // Cache busting
+            }), {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+
+            clearTimeout(timeoutId);
             const data = await response.json();
 
             if (data.success && data.updates) {
                 this.populateBanner(data.updates);
-                this.banner.style.display = 'block';
-                this.isVisible = true;
             } else {
                 this.showEmptyBanner();
             }
@@ -136,6 +187,58 @@ class UpdatesBanner {
         return text.substring(0, maxLength) + '...';
     }
 
+    handleUpdateClick(updateId) {
+        // Debounce click handling
+        if (this.clickTimeout) {
+            clearTimeout(this.clickTimeout);
+        }
+        
+        this.clickTimeout = setTimeout(() => {
+            this.closeBanner();
+            window.location.href = `/updates?highlight_update=${updateId}`;
+        }, 50);
+    }
+
+    handleViewAllClick() {
+        // Debounce click handling
+        if (this.clickTimeout) {
+            clearTimeout(this.clickTimeout);
+        }
+        
+        this.clickTimeout = setTimeout(() => {
+            this.closeBanner();
+            window.location.href = '/updates';
+        }, 50);
+    }
+
+    handleTouch(event) {
+        // Store touch start position
+        this.touchStartY = event.touches[0].clientY;
+        
+        // Add touch move and end handlers
+        document.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: true });
+        document.addEventListener('touchend', this.handleTouchEnd.bind(this), { passive: true });
+    }
+
+    handleTouchMove(event) {
+        if (!this.touchStartY) return;
+        
+        const touchY = event.touches[0].clientY;
+        const diff = touchY - this.touchStartY;
+        
+        // If scrolling down more than 50px, close the banner
+        if (diff > 50) {
+            this.closeBanner();
+        }
+    }
+
+    handleTouchEnd() {
+        // Clean up touch tracking
+        this.touchStartY = null;
+        document.removeEventListener('touchmove', this.handleTouchMove.bind(this));
+        document.removeEventListener('touchend', this.handleTouchEnd.bind(this));
+    }
+
     async checkForRecentUpdatesAndShowBadge() {
         try {
             const response = await fetch('/api/latest-update-time');
@@ -171,38 +274,20 @@ class UpdatesBanner {
     }
 }
 
-// Global functions for HTML onclick handlers
-function toggleUpdatesBanner() {
-    if (window.updatesBanner) {
-        window.updatesBanner.toggleBanner();
-    }
-}
+// Initialize the updates banner and expose global methods
+(() => {
+    // Create instance
+    window.updatesBanner = new UpdatesBanner();
 
-function closeUpdatesBanner() {
-    if (window.updatesBanner) {
-        window.updatesBanner.closeBanner();
-    }
-}
-
-function goToUpdate(updateId) {
-    // Close banner first
-    if (window.updatesBanner) {
-        window.updatesBanner.closeBanner();
-    }
-
-    // Navigate to the updates page with highlight
-    window.location.href = `/updates?highlight_update=${updateId}`;
-}
-
-function goToAllUpdates() {
-    // Close banner first
-    if (window.updatesBanner) {
-        window.updatesBanner.closeBanner();
-    }
-
-    // Navigate to the updates page
-    window.location.href = '/updates';
-}
-
-// Initialize the updates banner
-window.updatesBanner = new UpdatesBanner();
+    // Expose methods for onclick handlers
+    window.toggleUpdatesBanner = () => window.updatesBanner?.toggleBanner();
+    window.closeUpdatesBanner = () => window.updatesBanner?.closeBanner();
+    window.goToUpdate = (updateId) => {
+        window.updatesBanner?.closeBanner();
+        window.location.href = `/updates?highlight_update=${updateId}`;
+    };
+    window.goToAllUpdates = () => {
+        window.updatesBanner?.closeBanner();
+        window.location.href = '/updates';
+    };
+})();
