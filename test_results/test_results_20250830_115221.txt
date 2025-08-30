@@ -1,0 +1,732 @@
+Test Run: 2025-08-30 11:52:21
+================================================================================
+
+test_api_performance (test_core_functionality.CoreFunctionalityTest.test_api_performance)
+Test API response times ... ERROR
+test_database_connection (test_core_functionality.CoreFunctionalityTest.test_database_connection)
+Test database connection and basic operations ... ERROR
+test_error_handling (test_core_functionality.CoreFunctionalityTest.test_error_handling)
+Test error handling ... ERROR
+test_notification_system (test_core_functionality.CoreFunctionalityTest.test_notification_system)
+Test notification system ... ERROR
+test_session_handling (test_core_functionality.CoreFunctionalityTest.test_session_handling)
+Test session handling ... ERROR
+test_updates_api (test_core_functionality.CoreFunctionalityTest.test_updates_api)
+Test updates API endpoints ... ERROR
+test_user_authentication (test_core_functionality.CoreFunctionalityTest.test_user_authentication)
+Test user authentication ... ERROR
+test_websocket_configuration (test_core_functionality.CoreFunctionalityTest.test_websocket_configuration)
+Test WebSocket configuration ... ERROR
+test_archiving_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_archiving_functionality)
+Test archiving functionality ... ERROR
+test_backup_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_backup_functionality)
+Test backup features ... ERROR
+test_export_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_export_functionality)
+Test export features ... ERROR
+test_file_upload_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_file_upload_handling)
+Test file upload features ... ERROR
+test_lesson_learned_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_lesson_learned_functionality)
+Test Lesson Learned features ... ERROR
+test_monitoring_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_monitoring_functionality)
+Test monitoring features ... ERROR
+test_search_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_search_functionality)
+Test search features ... ERROR
+test_sop_summary_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_sop_summary_functionality)
+Test SOP Summary features ... ERROR
+test_timezone_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_timezone_handling)
+Test timezone handling ... ERROR
+
+======================================================================
+ERROR: test_api_performance (test_core_functionality.CoreFunctionalityTest.test_api_performance)
+Test API response times
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_database_connection (test_core_functionality.CoreFunctionalityTest.test_database_connection)
+Test database connection and basic operations
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_error_handling (test_core_functionality.CoreFunctionalityTest.test_error_handling)
+Test error handling
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_notification_system (test_core_functionality.CoreFunctionalityTest.test_notification_system)
+Test notification system
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_session_handling (test_core_functionality.CoreFunctionalityTest.test_session_handling)
+Test session handling
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_updates_api (test_core_functionality.CoreFunctionalityTest.test_updates_api)
+Test updates API endpoints
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_user_authentication (test_core_functionality.CoreFunctionalityTest.test_user_authentication)
+Test user authentication
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_websocket_configuration (test_core_functionality.CoreFunctionalityTest.test_websocket_configuration)
+Test WebSocket configuration
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_archiving_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_archiving_functionality)
+Test archiving functionality
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_backup_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_backup_functionality)
+Test backup features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_export_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_export_functionality)
+Test export features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_file_upload_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_file_upload_handling)
+Test file upload features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_lesson_learned_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_lesson_learned_functionality)
+Test Lesson Learned features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_monitoring_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_monitoring_functionality)
+Test monitoring features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_search_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_search_functionality)
+Test search features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_sop_summary_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_sop_summary_functionality)
+Test SOP Summary features
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+======================================================================
+ERROR: test_timezone_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_timezone_handling)
+Test timezone handling
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.165s
+
+FAILED (errors=17)
+
+================================================================================
+Test Summary:
+Run Duration: 10.26 seconds
+Tests Run: 17
+Failures: 0
+Errors: 17
+Skipped: 0
+
+Errors:
+
+test_api_performance (test_core_functionality.CoreFunctionalityTest.test_api_performance)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_database_connection (test_core_functionality.CoreFunctionalityTest.test_database_connection)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_error_handling (test_core_functionality.CoreFunctionalityTest.test_error_handling)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_notification_system (test_core_functionality.CoreFunctionalityTest.test_notification_system)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_session_handling (test_core_functionality.CoreFunctionalityTest.test_session_handling)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_updates_api (test_core_functionality.CoreFunctionalityTest.test_updates_api)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_user_authentication (test_core_functionality.CoreFunctionalityTest.test_user_authentication)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_websocket_configuration (test_core_functionality.CoreFunctionalityTest.test_websocket_configuration)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_core_functionality.py", line 22, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_archiving_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_archiving_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_backup_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_backup_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_export_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_export_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_file_upload_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_file_upload_handling)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_lesson_learned_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_lesson_learned_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_monitoring_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_monitoring_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_search_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_search_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_sop_summary_functionality (test_non_core_functionality.NonCoreFunctionalityTest.test_sop_summary_functionality)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+
+
+test_timezone_handling (test_non_core_functionality.NonCoreFunctionalityTest.test_timezone_handling)
+Traceback (most recent call last):
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\tests\test_non_core_functionality.py", line 21, in setUp
+    self.app = create_app(TestConfig)
+               ~~~~~~~~~~^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\app.py", line 95, in create_app
+    socketio.init_app(app)
+    ~~~~~~~~~~~~~~~~~^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\flask_socketio\__init__.py", line 242, in init_app
+    self.server = socketio.Server(**self.server_options)
+                  ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\socketio\base_server.py", line 34, in __init__
+    self.eio = self._engineio_server_class()(**engineio_options)
+               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "D:\Arbaaz\Labcorp\loopin_railway_clean_deploy\.venv\Lib\site-packages\engineio\base_server.py", line 94, in __init__
+    raise ValueError('Invalid async_mode specified')
+ValueError: Invalid async_mode specified
+

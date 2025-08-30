@@ -62,7 +62,7 @@ def handle_connect(auth=None):
         if user_id:
             try:
                 # Create a new database session to avoid transaction abortion issues
-                db_session = db.create_scoped_session()
+                db_session = db.sessionmaker(bind=db.engine)()
 
                 # Get user from database with error handling
                 user = db_session.query(User).get(user_id)
@@ -171,7 +171,7 @@ def handle_mark_read(data):
             return
 
         # Create a new database session to avoid transaction abortion issues
-        db_session = db.create_scoped_session()
+        db_session = db.sessionmaker(bind=db.engine)()
 
         user = db_session.query(User).get(user_id)
         if not user:
@@ -255,7 +255,7 @@ def handle_get_unread_count():
             return
 
         # Create a new database session to avoid transaction abortion issues
-        db_session = db.create_scoped_session()
+        db_session = db.sessionmaker(bind=db.engine)()
 
         user = db_session.query(User).get(user_id)
         if not user:

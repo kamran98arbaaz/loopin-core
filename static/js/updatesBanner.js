@@ -282,9 +282,32 @@ class UpdatesBanner {
     // Expose methods for onclick handlers
     window.toggleUpdatesBanner = () => window.updatesBanner?.toggleBanner();
     window.closeUpdatesBanner = () => window.updatesBanner?.closeBanner();
-    window.goToUpdate = (updateId) => {
-        window.updatesBanner?.closeBanner();
-        window.location.href = `/updates?highlight_update=${updateId}`;
+    window.goToUpdate = async (updateId) => {
+        try {
+            const response = await fetch(`/api/check-update/${updateId}`);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    console.error('Update no longer exists');
+                    const item = document.querySelector(`[data-update-id="${updateId}"]`);
+                    if (item) item.remove();
+                    return;
+                }
+                throw new Error('Failed to check update status');
+            }
+
+            window.updatesBanner?.closeBanner();
+            window.location.href = `/updates?highlight_update=${updateId}`;
+        } catch (error) {
+            console.error('Error navigating to update:', error);
+            const errorMsg = document.createElement('div');
+            errorMsg.className = 'banner-error-message';
+            errorMsg.textContent = 'Unable to view update. Please try again.';
+            const item = document.querySelector(`[data-update-id="${updateId}"]`);
+            if (item) {
+                item.appendChild(errorMsg);
+                setTimeout(() => errorMsg.remove(), 3000);
+            }
+        }
     };
     window.goToAllUpdates = () => {
         window.updatesBanner?.closeBanner();

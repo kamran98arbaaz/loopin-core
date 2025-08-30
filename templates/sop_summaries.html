@@ -18,7 +18,7 @@
         <a href="{{ url_for('view_sop_summary', summary_id=summary.id) }}">
           {{ summary.title }}
         </a>
-        <small> (Updated on {{ summary.updated_at.strftime('%d/%m/%Y') }})</small>
+        <small> (Created on {{ summary.created_at.strftime('%d/%m/%Y') }})</small>
       </li>
     {% endfor %}
   </ul>

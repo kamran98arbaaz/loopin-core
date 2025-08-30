@@ -5,6 +5,19 @@ from typing import Optional, Dict, Any
 
 class Config:
     """Base configuration."""
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 10,
+        'max_overflow': 20,
+        'pool_pre_ping': True,
+        'pool_recycle': 1800,
+        'connect_args': {
+            'connect_timeout': 10,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 5
+        }
+    }
     APP_NAME = "LoopIn"
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "replace-this-with-a-secure-random-string")
     SQLALCHEMY_TRACK_MODIFICATIONS = False

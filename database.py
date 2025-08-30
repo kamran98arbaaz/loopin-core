@@ -2,45 +2,95 @@
 
 import os
 import logging
+import time
 from contextlib import contextmanager
 from typing import Generator
 from flask import current_app
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError, OperationalError, InternalError
+from sqlalchemy import text, create_engine
+from sqlalchemy.pool import QueuePool
 from extensions import db
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def get_db_url():
+    """Get database URL with proper SSL configuration"""
+    db_url = current_app.config['SQLALCHEMY_DATABASE_URI']
+    if 'postgresql' in db_url and 'localhost' not in db_url:
+        # Add SSL parameters for non-local PostgreSQL connections
+        if '?' not in db_url:
+            db_url += '?'
+        else:
+            db_url += '&'
+        db_url += 'sslmode=require'
+    return db_url
+
+def configure_engine(engine):
+    """Configure database engine with optimized settings"""
+    engine.dialect.description_encoding = None  # Prevent encoding issues
+    engine.pool._use_threadlocal = True  # Enable thread-local storage
+    engine.pool.timeout = 30  # Connection timeout in seconds
+    engine.pool.recycle = 1800  # Recycle connections after 30 minutes
+    engine.pool.pre_ping = True  # Enable connection pre-ping
+    return engine
+
 @contextmanager
-def db_session() -> Generator:
-    """Provide a transactional scope around a series of operations."""
+def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
+    """Provide a transactional scope around a series of operations with retry logic."""
     logger.debug("Starting database session")
-    session = db.session()
-    try:
-        # Verify connection is active
-        session.execute(text('SELECT 1'))
-        yield session
-        logger.debug("Committing database transaction")
-        session.commit()
-    except SQLAlchemyError as e:
-        logger.error(f"Database error: {str(e)}")
-        logger.error(f"Error type: {type(e).__name__}")
-        if hasattr(e, 'orig'):
-            logger.error(f"Original error: {e.orig}")
+    attempt = 0
+    retry_delay = initial_retry_delay
+    last_error = None
+
+    while attempt < max_retries:
+        session = db.session()
         try:
-            session.rollback()
-        except Exception:
-            pass
-        if 'lock' in str(e).lower() or 'deadlock' in str(e).lower():
-            logger.warning("Lock-related error detected, cleaning up session")
-            cleanup_db()
-        raise
-    finally:
-        logger.debug("Closing database session")
-        try:
-            session.close()
-        except Exception:
-            pass
+            # Verify connection is active
+            session.execute(text('SELECT 1'))
+            yield session
+            logger.debug("Committing database transaction")
+            session.commit()
+            return
+        except (OperationalError, InternalError) as e:
+            attempt += 1
+            last_error = e
+            logger.warning(f"Database connection error (attempt {attempt}/{max_retries}): {str(e)}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
+
+            if attempt < max_retries:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"Max retries ({max_retries}) reached. Final error: {str(e)}")
+                raise
+        except SQLAlchemyError as e:
+            logger.error(f"Database error: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            if hasattr(e, 'orig'):
+                logger.error(f"Original error: {e.orig}")
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if 'lock' in str(e).lower() or 'deadlock' in str(e).lower():
+                logger.warning("Lock-related error detected, cleaning up session")
+                cleanup_db()
+            raise
+        finally:
+            logger.debug("Closing database session")
+            try:
+                session.close()
+            except Exception:
+                pass
+
+    if last_error:
+        raise last_error
 
 def init_db(app):
     """Initialize database with app context."""

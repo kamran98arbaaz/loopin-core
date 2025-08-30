@@ -22,6 +22,7 @@ from read_logs import bp as read_logs_bp
 from flask_login import LoginManager
 from models import User, Update, ReadLog, SOPSummary, LessonLearned, ActivityLog, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
 from extensions import db, socketio
+from database import db_session
 from role_decorators import admin_required, editor_required, writer_required, delete_required, export_required, get_user_role_info
 from timezone_utils import UTC, IST, now_utc, to_utc, to_ist, format_ist, ensure_timezone, is_within_hours, get_hours_ago
 from io import BytesIO
@@ -87,11 +88,58 @@ login_manager.login_view = 'login'
 # Process start timestamp for basic metrics
 APP_START = time.time()
 
+# Simple in-memory cache for performance optimization
+_cache = {}
+CACHE_TIMEOUT = 300  # 5 minutes
+
+def get_cached_user_role(user_id):
+    """Get cached user role information"""
+    cache_key = f"user_role_{user_id}"
+    if cache_key in _cache:
+        cached_time, role_info = _cache[cache_key]
+        if time.time() - cached_time < CACHE_TIMEOUT:
+            return role_info
+        else:
+            del _cache[cache_key]
+
+    user = User.query.get(user_id)
+    if user:
+        role_info = get_user_role_info(user)
+        _cache[cache_key] = (time.time(), role_info)
+        return role_info
+
+    return {'is_admin': False, 'is_editor': False, 'is_writer': False, 'is_deleter': False, 'is_exporter': False}
+
 def create_app(config_name=None):
     app = Flask(__name__)
+    
+    # Apply default config
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///:memory:')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev')
+    
+    # Apply custom configuration
+    if config_name:
+        app.config.from_object(config_name)
+    
+    # Initialize extensions
     migrate.init_app(app, db)
     login_manager.init_app(app)
-    socketio.init_app(app)
+    
+    # Initialize Socket.IO with optimized configuration
+    socketio_kwargs = {
+        'message_queue': None,
+        'cors_allowed_origins': '*',
+        'ping_timeout': 30,  # Reduced from 60 for faster disconnect detection
+        'ping_interval': 15,  # Reduced from 25 for more frequent health checks
+        'max_http_buffer_size': 500000,  # Reduced from 1e6 for memory efficiency
+        'async_mode': 'threading',  # Use threading for better performance
+        'transports': ['websocket', 'polling'],  # Prefer WebSocket
+        'compression': True,
+        'compression_threshold': 512,  # Compress smaller messages
+    }
+    
+    socketio.init_app(app, **socketio_kwargs)
     app.register_blueprint(read_logs_bp)
     # Register new API blueprint (first milestone)
     try:
@@ -197,28 +245,30 @@ def create_app(config_name=None):
         if os.getenv("PG_SSLKEY"):
             ssl_config["sslkey"] = os.getenv("PG_SSLKEY")
 
-        # Set connection arguments for Render with sync worker optimization
+        # Set connection arguments for Render with optimized connection pooling
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "connect_args": ssl_config,
-            # Render-specific connection pool settings optimized for sync workers
+            # Optimized connection pool settings for better performance
             "pool_pre_ping": True,
             "pool_recycle": 300,
-            "pool_timeout": 20,  # Shorter timeout for sync workers
-            "pool_size": 5,      # Smaller pool for sync workers
-            "max_overflow": 10,  # Less overflow for sync workers
-            # Additional settings for stability
+            "pool_timeout": 30,  # Increased timeout for better reliability
+            "pool_size": 10,     # Increased pool size for concurrent requests
+            "max_overflow": 20,  # Increased overflow for peak loads
+            # Additional settings for stability and performance
             "echo": False,  # Disable SQL echoing in production
+            "pool_reset_on_return": "rollback",  # Reset connections on return
         }
 
         logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL with sync workers")
     else:
-        # Non-PostgreSQL databases use default settings
+        # Non-PostgreSQL databases use optimized settings
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "pool_pre_ping": True,
             "pool_recycle": 300,
-            "pool_timeout": 20,
-            "pool_size": 5,
-            "max_overflow": 10,
+            "pool_timeout": 30,
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_reset_on_return": "rollback",
         }
 
     db.init_app(app)
@@ -460,21 +510,24 @@ def create_app(config_name=None):
 
     @app.context_processor
     def inject_current_user():
-        user = None
-        if session.get("user_id"):
-            user = User.query.get(session["user_id"])
-        return dict(current_user=user)
+        """Inject current user into template context with caching"""
+        user_id = session.get("user_id")
+        if user_id:
+            # Use get() instead of filter_by().first() for better performance
+            user = User.query.get(user_id)
+            return dict(current_user=user)
+        return dict(current_user=None)
 
     @app.context_processor
     def inject_user_role_info():
         """
         Inject user role information into templates for conditional rendering.
         """
-        user = None
-        if session.get("user_id"):
-            user = User.query.get(session["user_id"])
-        role_info = get_user_role_info(user)
-        return dict(user_role=role_info)
+        user_id = session.get("user_id")
+        if user_id:
+            role_info = get_cached_user_role(user_id)
+            return dict(user_role=role_info)
+        return dict(user_role={'is_admin': False, 'is_editor': False, 'is_writer': False, 'is_deleter': False, 'is_exporter': False})
 
     @app.context_processor
     def inject_now_utc():
@@ -534,50 +587,46 @@ def create_app(config_name=None):
     # Routes
     @app.route("/health")
     def health():
-        """Enhanced health check endpoint with memory monitoring"""
+        """Optimized health check endpoint"""
         try:
-            # Test database connection
+            # Test database connection efficiently
             db.session.execute(text("SELECT 1"))
-
-            # Memory usage monitoring (if psutil available)
-            memory_info = {"available": False}
-            try:
-                import psutil
-                process = psutil.Process(os.getpid())
-                memory_mb = process.memory_info().rss / 1024 / 1024
-                memory_info = {
-                    "available": True,
-                    "usage_mb": round(memory_mb, 2),
-                    "usage_percent": round(process.memory_percent(), 2)
-                }
-            except ImportError:
-                memory_info["message"] = "psutil not available"
 
             out = {
                 "status": "ok",
                 "db": "connected",
-                "memory": memory_info,
                 "timestamp": now_utc().isoformat()
             }
 
-            # Check Redis if configured
-            redis_url = os.getenv("REDIS_URL")
-            if redis_url:
+            # Optional memory monitoring (only if needed)
+            if os.getenv("DETAILED_HEALTH_CHECK") == "true":
+                memory_info = {"available": False}
                 try:
-                    # Simple Redis connectivity check
+                    import psutil
+                    process = psutil.Process(os.getpid())
+                    memory_mb = process.memory_info().rss / 1024 / 1024
+                    memory_info = {
+                        "available": True,
+                        "usage_mb": round(memory_mb, 2),
+                        "usage_percent": round(process.memory_percent(), 2)
+                    }
+                    out["memory"] = memory_info
+                except ImportError:
+                    pass
+
+            # Check Redis if configured (only if needed)
+            if os.getenv("DETAILED_HEALTH_CHECK") == "true":
+                redis_url = os.getenv("REDIS_URL")
+                if redis_url:
                     try:
                         import redis
-                    except ImportError:
-                        out["redis"] = "redis_package_not_installed"
-                        return jsonify(out), 200
-
-                    r = redis.from_url(redis_url)
-                    r.ping()
-                    out["redis"] = "connected"
-                except Exception as e:
-                    out["redis"] = f"error: {str(e)}"
-            else:
-                out["redis"] = "not_configured"
+                        r = redis.from_url(redis_url)
+                        r.ping()
+                        out["redis"] = "connected"
+                    except Exception as e:
+                        out["redis"] = f"error: {str(e)}"
+                else:
+                    out["redis"] = "not_configured"
 
             return jsonify(out), 200
         except Exception as e:
@@ -795,27 +844,32 @@ def create_app(config_name=None):
     @app.route("/")
     def home():
         try:
-            summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).all()
-            lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).all()
-            
-            # Get latest updates for the home page - simplified version
+            # Limit the number of items loaded for better performance
+            summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(10).all()
+            lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(10).all()
+
+            # Get latest updates for the home page with read counts
             latest_updates = Update.query.order_by(Update.timestamp.desc()).limit(5).all()
             updates_data = []
-            
+
             for update in latest_updates:
                 update_dict = update.to_dict()
-                update_dict['read_count'] = 0  # Simplified for now
-                update_dict['is_new'] = False  # Simplified for now
+                # Get read count efficiently
+                read_count = db.session.query(func.count(ReadLog.id)).filter(
+                    ReadLog.update_id == update.id
+                ).scalar()
+                update_dict['read_count'] = read_count
+                update_dict['is_new'] = is_within_hours(update.timestamp, 24, now_utc())
                 updates_data.append(update_dict)
-            
+
             return render_template("home.html", app_name=app.config["APP_NAME"],
-                                 summaries=summaries, lessons=lessons, updates=updates_data,
-                                 excel_export_available=EXCEL_EXPORT_AVAILABLE)
+                                  summaries=summaries, lessons=lessons, updates=updates_data,
+                                  excel_export_available=EXCEL_EXPORT_AVAILABLE)
         except Exception as e:
             # Return a basic template without updates if there's an error
             return render_template("home.html", app_name=app.config["APP_NAME"],
-                                 summaries=[], lessons=[], updates=[],
-                                 excel_export_available=EXCEL_EXPORT_AVAILABLE)
+                                  summaries=[], lessons=[], updates=[],
+                                  excel_export_available=EXCEL_EXPORT_AVAILABLE)
 
     @app.route("/updates")
     def show_updates():
@@ -861,16 +915,14 @@ def create_app(config_name=None):
 
             updates.append(d)
 
-        # Get additional data for template
-        all_updates = Update.query.all()
-        unique_authors = list(set([upd.name for upd in all_updates if upd.name]))
-        processes = list(set([upd.process for upd in all_updates if upd.process]))
+        # Get additional data for template more efficiently
+        # Use distinct queries instead of loading all records
+        unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
+        processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
         
-        # Calculate updates this week
-        updates_this_week = 0
-        for upd in all_updates:
-            if upd.timestamp and is_within_hours(upd.timestamp, 24 * 7, current_time):
-                updates_this_week += 1
+        # Calculate updates this week more efficiently
+        week_ago = get_hours_ago(24 * 7)
+        updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
         
         # Get unique departments (consistent with other forms)
         departments = ["ABC", "XYZ", "AB"]
@@ -1149,9 +1201,6 @@ def create_app(config_name=None):
     def api_latest_update_time():
         """API endpoint to get the timestamp of the most recent update"""
         try:
-            # Ensure we have a fresh database session
-            db.session.close()
-
             latest_update = Update.query.order_by(Update.timestamp.desc()).first()
             if latest_update:
                 # Ensure timezone is properly handled
@@ -1168,13 +1217,6 @@ def create_app(config_name=None):
                 })
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
-            # Try to rollback and close session on error
-            try:
-                db.session.rollback()
-                db.session.close()
-            except:
-                pass
-
             return jsonify({
                 "latest_timestamp": None,
                 "success": False,
@@ -1186,7 +1228,7 @@ def create_app(config_name=None):
     @login_required
     def list_sop_summaries():
         sops = SOPSummary.query.order_by(SOPSummary.created_at.desc()).all()
-        return render_template("sop_summaries.html", sops=sops)
+        return render_template("sop_summaries.html", summaries=sops)
 
     @app.route("/sop_summaries/add", methods=["GET", "POST"])
     @writer_required
@@ -1475,6 +1517,28 @@ def create_app(config_name=None):
 
 
 
+    @app.route("/api/check-update/<update_id>")
+    def check_update(update_id):
+        """Check if an update exists and is accessible."""
+        try:
+            update = Update.query.get(update_id)
+            if not update:
+                return jsonify({
+                    'error': 'Not Found',
+                    'message': 'Update not found'
+                }), 404
+            return jsonify({
+                'exists': True,
+                'id': update.id,
+                'status': 'active'
+            })
+        except Exception as e:
+            logger.error(f"Error checking update {update_id}: {str(e)}")
+            return jsonify({
+                'error': 'Internal Server Error',
+                'message': 'Unable to check update status'
+            }), 500
+
     @app.route("/api/recent-updates")
     def recent_updates():
         """Get updates from the past 24 hours for the bell icon banner."""
@@ -1486,6 +1550,12 @@ def create_app(config_name=None):
             recent_updates = Update.query.filter(
                 Update.timestamp >= twenty_four_hours_ago
             ).order_by(Update.timestamp.desc()).limit(10).all()
+
+            if not recent_updates:
+                return jsonify({
+                    'updates': [],
+                    'message': 'No recent updates found'
+                })
 
             updates_data = []
             for update in recent_updates:
@@ -1610,20 +1680,27 @@ def create_app(config_name=None):
             summary_data.append({'Metric': 'Total Reads', 'Value': total_reads})
 
             # Unique readers
-            unique_readers = df['Reader Name'].nunique()
+            unique_readers = df['Reader Name'].nunique() if not df.empty and 'Reader Name' in df.columns else 0
             summary_data.append({'Metric': 'Unique Readers', 'Value': unique_readers})
 
             # Registered vs Guest reads
-            registered_reads = len(df[df['Reader Type'] == 'Registered User'])
-            guest_reads = len(df[df['Reader Type'] == 'Guest'])
+            if not df.empty and 'Reader Type' in df.columns:
+                registered_reads = len(df[df['Reader Type'] == 'Registered User'])
+                guest_reads = len(df[df['Reader Type'] == 'Guest'])
+            else:
+                registered_reads = 0
+                guest_reads = 0
             summary_data.append({'Metric': 'Registered User Reads', 'Value': registered_reads})
             summary_data.append({'Metric': 'Guest Reads', 'Value': guest_reads})
 
             # Most active readers (top 10)
-            top_readers = df['Reader Name'].value_counts().head(10)
+            top_readers = df['Reader Name'].value_counts().head(10) if not df.empty and 'Reader Name' in df.columns else pd.Series()
 
             # Most read updates (top 10)
-            most_read_updates = df.groupby(['Update ID', 'Update Message', 'Update Author']).size().reset_index(name='Read Count').sort_values('Read Count', ascending=False).head(10)
+            if not df.empty and 'Update ID' in df.columns and 'Update Message' in df.columns and 'Update Author' in df.columns:
+                most_read_updates = df.groupby(['Update ID', 'Update Message', 'Update Author']).size().reset_index(name='Read Count').sort_values('Read Count', ascending=False).head(10)
+            else:
+                most_read_updates = pd.DataFrame()
 
             # Create Excel file in memory
             output = BytesIO()
@@ -1722,7 +1799,7 @@ def create_app(config_name=None):
                 most_read_updates.to_excel(writer, sheet_name='Most Read Updates', index=False)
 
                 # Process-wise analytics
-                if not df.empty and 'Update Process' in df.columns:
+                if not df.empty and 'Update Process' in df.columns and 'Reader Name' in df.columns:
                     process_stats = df.groupby('Update Process').agg({
                         'Read Log ID': 'count',
                         'Reader Name': 'nunique'
@@ -1973,6 +2050,9 @@ def create_app(config_name=None):
         """Display archived items management page."""
         try:
             # Get archived items with user info - using explicit aliases to avoid parameter conflicts
+            from sqlalchemy.orm import aliased
+            user_alias = aliased(User)
+
             archived_updates = db.session.query(
                 ArchivedUpdate,
                 user_alias.display_name.label('archived_by_name')
@@ -2167,6 +2247,11 @@ def create_app(config_name=None):
                     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
                     response.headers['Pragma'] = 'no-cache'
                     response.headers['Expires'] = '0'
+            else:
+                # In production, cache static files aggressively
+                if request.path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg')):
+                    response.headers['Cache-Control'] = 'public, max-age=31536000'  # 1 year
+                    response.headers['Expires'] = (datetime.utcnow() + timedelta(days=365)).strftime('%a, %d %b %Y %H:%M:%S GMT')
 
         # Socket.IO CORS is handled by the Socket.IO extension, don't override here
 
@@ -2265,10 +2350,9 @@ def create_app(config_name=None):
 
     return app
 
-# Create app instance for gunicorn
-app = create_app()
-
 if __name__ == "__main__":
+    # Create app instance for gunicorn or direct execution
+    app = create_app()
     port = int(os.getenv("PORT", 8000))
     # Set debug based on environment variable
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() == "true"
@@ -2305,23 +2389,25 @@ if __name__ == "__main__":
                 "http://127.0.0.1:5000"
             ] if os.getenv("RENDER") else "*",
             server_options={
-                'ping_timeout': 60,
-                'ping_interval': 25,
-                'max_http_buffer_size': 1000000,
+                'ping_timeout': 30,  # Reduced for faster disconnect detection
+                'ping_interval': 15,  # More frequent health checks
+                'max_http_buffer_size': 500000,  # Reduced for memory efficiency
                 'allow_upgrades': True,
-                'transports': ['polling', 'websocket'],
-                'upgrade_timeout': 10000,  # 10 second upgrade timeout
-                'close_timeout': 60,
-                'heartbeat_interval': 25,
-                'heartbeat_timeout': 60,
+                'transports': ['websocket', 'polling'],  # Prefer WebSocket first
+                'upgrade_timeout': 5000,  # Faster upgrade timeout
+                'close_timeout': 30,  # Faster close timeout
+                'heartbeat_interval': 15,  # More frequent heartbeats
+                'heartbeat_timeout': 30,  # Faster heartbeat timeout
                 'max_connections': 1000,
                 'compression': True,
-                'compression_threshold': 1024,
-                # Fix for WebSocket handshake issues
+                'compression_threshold': 512,  # Compress smaller messages
+                # Performance optimizations
                 'handle_sigint': True,
                 'always_connect': False,
                 'jsonp': False,
-                'cookie': None
+                'cookie': None,
+                'connect_timeout': 10,  # Connection timeout
+                'client_manager_mode': 'threading',  # Use threading for better performance
             }
         )
     except Exception as e:
