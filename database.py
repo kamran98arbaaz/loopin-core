@@ -123,7 +123,7 @@ def test_ssl_connection(connection=None):
             connection.close()
 
 def health_check() -> bool:
-    """Check database connectivity with SSL-aware error handling."""
+    """Check database connectivity with improved error handling for sync workers."""
     logger.info("Starting database health check")
 
     # Log database connection details
@@ -147,12 +147,15 @@ def health_check() -> bool:
         logger.info(f"Connection pool size: {getattr(pool, 'size', 'N/A')}")
         logger.info(f"Connection pool overflow: {getattr(pool, '_overflow', 'N/A')}")
 
-        # Test connection with retry logic for SSL issues
+        # Test connection with improved retry logic for sync workers
         logger.info("Testing database connection...")
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                result = db.session.execute(text("SELECT 1"))
+                # Use a new connection for testing to avoid session issues
+                with db.engine.connect() as connection:
+                    result = connection.execute(text("SELECT 1"))
+                    result.fetchone()  # Consume the result
                 logger.info("Database connection successful")
                 return True
             except SQLAlchemyError as conn_e:

@@ -23,8 +23,8 @@ else:
     accesslog = '-'
     errorlog = '-'
 
-worker_class = 'gevent'  # Use gevent for better memory efficiency
-threads = 1  # Reduce threads
+worker_class = 'sync'  # Use sync workers for SQLAlchemy compatibility
+threads = 2  # Use threads for better concurrency
 timeout = 30  # Shorter timeout to free memory faster
 keepalive = 10  # Shorter keepalive
 

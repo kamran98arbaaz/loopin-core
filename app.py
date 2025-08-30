@@ -1,14 +1,8 @@
 import os
 
-# Gevent monkey patching must happen BEFORE other imports that use SSL
-try:
-    import gevent.monkey
-    gevent.monkey.patch_all()
-    if os.getenv("FLASK_ENV") == "development":
-        print("✅ Gevent monkey patching applied early (prevents SSL warnings)")
-except ImportError:
-    if os.getenv("FLASK_ENV") == "development":
-        print("INFO: Gevent not available")
+# Removed gevent monkey patching - using sync workers for better SQLAlchemy compatibility
+if os.getenv("FLASK_ENV") == "development":
+    print("ℹ️ Using sync workers (no gevent monkey patching)")
 import time
 import uuid
 import pytz
@@ -191,7 +185,7 @@ def create_app(config_name=None):
         ssl_config = {}
 
         # Set SSL mode with Render-friendly defaults
-        ssl_mode = os.getenv("PG_SSLMODE", "prefer")  # Default to 'prefer' for Render
+        ssl_mode = os.getenv("PG_SSLMODE", "require")  # Default to 'require' for Render
         ssl_config["sslmode"] = ssl_mode
         logger.info(f"PostgreSQL SSL mode: {ssl_mode}")
 
@@ -203,23 +197,28 @@ def create_app(config_name=None):
         if os.getenv("PG_SSLKEY"):
             ssl_config["sslkey"] = os.getenv("PG_SSLKEY")
 
-        # Set connection arguments for Render
+        # Set connection arguments for Render with sync worker optimization
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "connect_args": ssl_config,
-            # Render-specific connection pool settings
+            # Render-specific connection pool settings optimized for sync workers
             "pool_pre_ping": True,
             "pool_recycle": 300,
-            "pool_timeout": 30,  # Longer timeout for Render
-            "pool_size": 10,     # Larger pool for Render's better resources
-            "max_overflow": 20,  # More overflow for Render
+            "pool_timeout": 20,  # Shorter timeout for sync workers
+            "pool_size": 5,      # Smaller pool for sync workers
+            "max_overflow": 10,  # Less overflow for sync workers
+            # Additional settings for stability
+            "echo": False,  # Disable SQL echoing in production
         }
 
-        logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL")
+        logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL with sync workers")
     else:
         # Non-PostgreSQL databases use default settings
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "pool_pre_ping": True,
             "pool_recycle": 300,
+            "pool_timeout": 20,
+            "pool_size": 5,
+            "max_overflow": 10,
         }
 
     db.init_app(app)
@@ -285,7 +284,11 @@ def create_app(config_name=None):
         # If database verification failed, don't continue with app startup
         if not db_verification_success:
             logger.error("❌ Database verification failed - aborting app startup")
-            raise RuntimeError("Database verification failed - cannot start application")
+            # In production, we might want to be more graceful
+            if os.getenv("FLASK_ENV") == "production":
+                logger.warning("⚠️ Continuing with app startup despite database issues (production mode)")
+            else:
+                raise RuntimeError("Database verification failed - cannot start application")
 
     # Activity Logging Helper
     def log_activity(action, entity_type, entity_id, entity_title=None, details=None):

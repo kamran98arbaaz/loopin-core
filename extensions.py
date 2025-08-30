@@ -40,7 +40,7 @@ socketio = SocketIO(
     message_queue=None,  # Use in-memory queue for single instance
     channel='socketio',  # Channel name for message queue
     # Socket.IO v5 compatible settings
-    async_mode='threading',  # Use threading for Render compatibility
+    async_mode='threading',  # Use threading for sync worker compatibility
     path='/socket.io',  # Explicit Socket.IO path
     transports=['websocket', 'polling'],  # Prioritize WebSocket for Render
     # Enhanced stability configurations for Render

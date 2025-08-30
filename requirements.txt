@@ -10,9 +10,9 @@ psycopg2-binary==2.9.10
 SQLAlchemy==2.0.42
 alembic==1.16.4
 
-# Web server for production (Railway-optimized)
+# Web server for production (Render-optimized)
 gunicorn==21.2.0
-gevent==24.2.1  # Lighter than eventlet
+# Removed gevent - using sync workers for better SQLAlchemy compatibility
 
 # Essential utilities (minimal)
 python-dotenv==1.1.1
