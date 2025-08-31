@@ -64,10 +64,11 @@ def performance_logger(f):
             # Log slow requests (>1 second)
             if duration > 1.0:
                 logger.warning(".2f"
-                              f"endpoint={request.endpoint} "
-                              f"method={request.method} "
-                              f"path={request.path} "
-                              f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}")
+                               f"endpoint={request.endpoint} "
+                               f"method={request.method} "
+                               f"path={request.path} "
+                               f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}",
+                               duration)
 
             # Log all requests for performance analysis
             logger.info(".3f"
@@ -81,9 +82,10 @@ def performance_logger(f):
             end_time = time.time()
             duration = end_time - start_time
             logger.error(".2f"
-                        f"endpoint={request.endpoint} "
-                        f"method={request.method} "
-                        f"error={str(e)}")
+                         f"endpoint={request.endpoint} "
+                         f"method={request.method} "
+                         f"error={str(e)}",
+                         duration)
             raise
     return decorated_function
 
@@ -200,6 +202,38 @@ def get_cached_recent_updates(limit=10):
     _cache[cache_key] = (current_time, updates_data)
     return updates_data
 
+def get_cached_sop_summaries(limit=10):
+    """Cache SOP summaries for performance"""
+    cache_key = f"sop_summaries_{limit}"
+    current_time = time.time()
+
+    if cache_key in _cache:
+        cached_time, summaries = _cache[cache_key]
+        if current_time - cached_time < 300:  # Cache for 5 minutes
+            return summaries
+        else:
+            del _cache[cache_key]
+
+    summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(limit).all()
+    _cache[cache_key] = (current_time, summaries)
+    return summaries
+
+def get_cached_lessons_learned(limit=10):
+    """Cache lessons learned for performance"""
+    cache_key = f"lessons_learned_{limit}"
+    current_time = time.time()
+
+    if cache_key in _cache:
+        cached_time, lessons = _cache[cache_key]
+        if current_time - cached_time < 300:  # Cache for 5 minutes
+            return lessons
+        else:
+            del _cache[cache_key]
+
+    lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(limit).all()
+    _cache[cache_key] = (current_time, lessons)
+    return lessons
+
 def create_app(config_name=None):
     app = Flask(__name__)
 
@@ -243,28 +277,35 @@ def create_app(config_name=None):
     socketio_kwargs = {
         'message_queue': None,
         'cors_allowed_origins': '*',
-        'ping_timeout': 25000,  # Reduced from 30s for faster disconnect detection
-        'ping_interval': 20000,  # Increased from 15s to reduce server load
-        'max_http_buffer_size': 100000,  # Reduced from 500KB for memory efficiency
+        'ping_timeout': 20000,  # Reduced for faster disconnect detection
+        'ping_interval': 25000,  # Increased to reduce server load
+        'max_http_buffer_size': 50000,  # Further reduced for memory efficiency
         'async_mode': 'threading',
         'transports': ['websocket', 'polling'],
         'compression': True,
-        'compression_threshold': 1024,  # Increased from 512B to reduce compression overhead
+        'compression_threshold': 2048,  # Increased to reduce compression overhead
         'path': '/socket.io',
         'allow_upgrades': True,
         'cookie': False,
         # Performance optimizations
-        'connect_timeout': 10000,  # 10 second connection timeout
-        'upgrade_timeout': 5000,   # 5 second upgrade timeout
-        'max_reconnection_attempts': 5,  # Limit reconnection attempts
-        'reconnection_delay': 2000,  # 2 second base delay
-        'reconnection_delay_max': 10000,  # Max 10 second delay
-        'randomization_factor': 0.3,  # Less randomization for predictability
+        'connect_timeout': 8000,   # Reduced connection timeout
+        'upgrade_timeout': 4000,   # Reduced upgrade timeout
+        'max_reconnection_attempts': 3,  # Reduced reconnection attempts
+        'reconnection_delay': 1000,     # Reduced base delay
+        'reconnection_delay_max': 5000, # Reduced max delay
+        'randomization_factor': 0.2,    # Less randomization
         # Memory optimizations
-        'max_http_buffer_size': 100000,
+        'max_http_buffer_size': 50000,
         'http_compression': True,
         'per_message_deflate': True,
-        'force_base64': False  # Disable base64 for better performance
+        'force_base64': False,  # Disable base64 for better performance
+        # Additional performance settings
+        'close_timeout': 3000,    # Faster close timeout
+        'heartbeat_timeout': 15000, # Reduced heartbeat timeout
+        'polling_duration': 20000,   # Polling duration
+        # Connection pool optimizations
+        'max_connections': 100,   # Limit concurrent connections
+        'max_http_connections': 50 # Limit HTTP connections
     }
 
     # Initialize Socket.IO blueprint first
@@ -1105,15 +1146,15 @@ def create_app(config_name=None):
     @performance_logger
     def home():
         try:
-            # Use cached data for better performance
-            summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(10).all()
-            lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(10).all()
+            # Use cached data for better performance - increased cache limits for better UX
+            summaries = get_cached_sop_summaries(10)
+            lessons = get_cached_lessons_learned(10)
 
             # Use cached recent updates for better performance
             latest_updates = get_cached_recent_updates(5)
             updates_data = []
 
-            # Get read counts efficiently using a single query
+            # Get read counts efficiently using a single optimized query
             if latest_updates:
                 update_ids = [update['id'] for update in latest_updates]
                 read_counts = dict(
@@ -2324,14 +2365,22 @@ def create_app(config_name=None):
                                   backups=backups)
         except ImportError as e:
             logger.error(f"Failed to import backup system: {e}")
-            flash("Backup system module not found.", "error")
+            flash("Backup system module not found. Please check if backup_system.py exists.", "error")
+            return redirect(url_for("home"))
+        except PermissionError as e:
+            logger.error(f"Permission error accessing backup directory: {e}")
+            flash("Permission denied accessing backup directory. Please check file permissions.", "error")
+            return redirect(url_for("home"))
+        except FileNotFoundError as e:
+            logger.error(f"Backup directory not found: {e}")
+            flash("Backup directory not found. Please check if the backups folder exists.", "error")
             return redirect(url_for("home"))
         except Exception as e:
             logger.error(f"Error loading backup page: {e}")
             logger.error(f"Error type: {type(e).__name__}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
-            flash("Error loading backup page. Please try again later.", "error")
+            flash(f"Error loading backup page: {str(e)}. Please try again later.", "error")
             return redirect(url_for("home"))
 
     @app.route("/backup/create", methods=["POST"])

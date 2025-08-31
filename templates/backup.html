@@ -110,7 +110,11 @@
                 {{ "%.1f"|format(backup.size / (1024 * 1024)) }} MB
               </td>
               <td class="backup-date">
-                {{ backup.timestamp | format_backup_timestamp }}
+                {% if backup.timestamp %}
+                  {{ backup.timestamp | format_backup_timestamp }}
+                {% else %}
+                  N/A
+                {% endif %}
               </td>
               <td class="backup-actions">
                 <form method="POST" action="{{ url_for('restore_backup') }}" class="inline-form">
@@ -121,7 +125,13 @@
                     Restore
                   </button>
                 </form>
-                <form method="POST" action="{{ url_for('delete_backup') }}" class="inline-form">
+                <form method="POST" action="{{ url_for('download_backup', filename=backup.filename) }}" class="inline-form">
+                  <button type="submit" class="btn btn-info btn-small">
+                    <i class="fas fa-download"></i>
+                    Download
+                  </button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_backup', filename=backup.filename) }}" class="inline-form">
                   <input type="hidden" name="backup_file" value="{{ backup.filename }}">
                   <button type="submit" class="btn btn-danger btn-small"
                           onclick="return confirm('⚠️ PERMANENTLY DELETE this backup file? This action cannot be undone!')">

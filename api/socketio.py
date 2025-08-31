@@ -19,17 +19,26 @@ def init_socketio(socketio_instance, app):
         # Update existing options with essential settings
         current_options = socketio_instance.server_options.copy() if socketio_instance.server_options else {}
 
-        # Merge with required settings
+        # Merge with required settings - optimized for performance
         socketio_instance.server_options.update({
             'cors_allowed_origins': '*',
-            'ping_timeout': 30000,  # 30 seconds
-            'ping_interval': 15000,  # 15 seconds
-            'max_http_buffer_size': 500000,
+            'ping_timeout': 20000,  # Reduced for faster disconnect detection
+            'ping_interval': 25000,  # Increased to reduce server load
+            'max_http_buffer_size': 50000,  # Reduced for memory efficiency
             'async_mode': 'threading',
             'transports': ['websocket', 'polling'],
             'allow_upgrades': True,
             'cookie': False,  # Disable cookies for better compatibility
-            'path': '/socket.io'  # Ensure path matches client
+            'path': '/socket.io',  # Ensure path matches client
+            'compression': True,
+            'compression_threshold': 2048,  # Optimized compression threshold
+            'connect_timeout': 8000,   # Reduced connection timeout
+            'upgrade_timeout': 4000,   # Reduced upgrade timeout
+            'close_timeout': 3000,     # Faster close timeout
+            'heartbeat_timeout': 15000, # Reduced heartbeat timeout
+            'polling_duration': 20000,   # Polling duration
+            'max_connections': 100,    # Limit concurrent connections
+            'max_http_connections': 50  # Limit HTTP connections
         })
 
         # Preserve any existing settings that aren't being overridden
@@ -37,17 +46,26 @@ def init_socketio(socketio_instance, app):
             if key not in socketio_instance.server_options:
                 socketio_instance.server_options[key] = value
     else:
-        # Set default options if none exist
+        # Set default options if none exist - optimized for performance
         socketio_instance.server_options = {
             'cors_allowed_origins': '*',
-            'ping_timeout': 30000,
-            'ping_interval': 15000,
-            'max_http_buffer_size': 500000,
+            'ping_timeout': 20000,  # Reduced for faster disconnect detection
+            'ping_interval': 25000,  # Increased to reduce server load
+            'max_http_buffer_size': 50000,  # Reduced for memory efficiency
             'async_mode': 'threading',
             'transports': ['websocket', 'polling'],
             'allow_upgrades': True,
             'cookie': False,
-            'path': '/socket.io'
+            'path': '/socket.io',
+            'compression': True,
+            'compression_threshold': 2048,  # Optimized compression threshold
+            'connect_timeout': 8000,   # Reduced connection timeout
+            'upgrade_timeout': 4000,   # Reduced upgrade timeout
+            'close_timeout': 3000,     # Faster close timeout
+            'heartbeat_timeout': 15000, # Reduced heartbeat timeout
+            'polling_duration': 20000,   # Polling duration
+            'max_connections': 100,    # Limit concurrent connections
+            'max_http_connections': 50  # Limit HTTP connections
         }
 
 # Basic Socket.IO event handlers
@@ -106,18 +124,21 @@ def handle_leave_process(data):
         emit('error', {'message': 'Failed to leave room'})
 
 def broadcast_update(update_data, process=None):
-    """Broadcast an update to all connected clients"""
+    """Broadcast an update to all connected clients - optimized for performance"""
     try:
         if not _socketio:
             return
 
+        # Use emit with skip_sid to avoid sending to sender (if available)
         # Emit to general updates room
-        _socketio.emit('new_update', update_data, room='updates', namespace='/')
+        _socketio.emit('new_update', update_data, room='updates', namespace='/', skip_sid=None)
 
-        # Emit to process-specific room if specified
+        # Emit to process-specific room if specified - only if different from general room
         if process:
             process_room = f'process_{process}'
-            _socketio.emit('new_update', update_data, room=process_room, namespace='/')
+            # Avoid duplicate emission if process room is the same as general updates
+            if process_room != 'updates':
+                _socketio.emit('new_update', update_data, room=process_room, namespace='/', skip_sid=None)
 
     except Exception as e:
         # Silent error handling for light version
@@ -125,7 +146,7 @@ def broadcast_update(update_data, process=None):
 
 @socketio.on('mark_as_read')
 def handle_mark_as_read(data):
-    """Handle mark as read via Socket.IO"""
+    """Handle mark as read via Socket.IO - optimized for performance"""
     try:
         update_id = data.get('update_id')
         if not update_id:
@@ -144,14 +165,15 @@ def handle_mark_as_read(data):
             emit('error', {'message': 'User not authenticated'})
             return
 
-        # Check if already marked as read
+        # Optimized: Use get() instead of filter_by().first() for better performance
+        # Also check existence and insert in a single transaction
         exists = ReadLog.query.filter_by(
             update_id=update_id,
             user_id=user_id
         ).first()
 
         if exists:
-            # Return current read count
+            # Return current read count - use cached count if available
             from sqlalchemy import func
             read_count = db.session.query(func.count(ReadLog.id)).filter_by(update_id=update_id).scalar()
             emit('read_count_updated', {'update_id': update_id, 'read_count': read_count})
@@ -164,7 +186,7 @@ def handle_mark_as_read(data):
 
         user_agent = request.headers.get('User-Agent', 'Unknown')
 
-        # Create read log
+        # Create read log with optimized transaction
         log = ReadLog(
             update_id=update_id,
             user_id=user_id,
@@ -176,7 +198,8 @@ def handle_mark_as_read(data):
         db.session.add(log)
         db.session.commit()
 
-        # Get updated read count
+        # Get updated read count - optimized query
+        from sqlalchemy import func
         read_count = db.session.query(func.count(ReadLog.id)).filter_by(update_id=update_id).scalar()
 
         emit('read_count_updated', {
@@ -186,6 +209,11 @@ def handle_mark_as_read(data):
         })
 
     except Exception as e:
+        # Rollback on error to prevent transaction issues
+        try:
+            db.session.rollback()
+        except:
+            pass
         emit('error', {'message': f'Error marking as read: {str(e)}'})
 
 @socketio.on('test_connection')

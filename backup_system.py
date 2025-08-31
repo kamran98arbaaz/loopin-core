@@ -20,7 +20,15 @@ class DatabaseBackupSystem:
 
     def __init__(self):
         self.backup_dir = Path("backups")
-        self.backup_dir.mkdir(exist_ok=True)
+        try:
+            self.backup_dir.mkdir(exist_ok=True)
+            logger.info(f"Backup directory initialized: {self.backup_dir.absolute()}")
+        except PermissionError as e:
+            logger.error(f"Permission denied creating backup directory: {e}")
+            raise RuntimeError(f"Cannot create backup directory: {e}")
+        except Exception as e:
+            logger.error(f"Error creating backup directory: {e}")
+            raise RuntimeError(f"Failed to initialize backup directory: {e}")
 
     def create_backup(self, backup_type: str = "manual") -> Optional[str]:
         """Create a database backup"""
