@@ -4,7 +4,7 @@
     "api/index.py": {
       "runtime": "@vercel/python",
       "maxDuration": 30,
-      "maxLambdaSize": "50mb"
+      "memory": 1024
     }
   },
   "routes": [
