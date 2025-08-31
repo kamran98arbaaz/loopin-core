@@ -277,7 +277,7 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     
-    # Initialize Socket.IO with optimized configuration for performance
+    # Initialize Socket.IO with Vercel-compatible configuration
     socketio_kwargs = {
         'message_queue': None,
         'cors_allowed_origins': '*',
@@ -285,11 +285,12 @@ def create_app(config_name=None):
         'ping_interval': 25000,  # Increased to reduce server load
         'max_http_buffer_size': 50000,  # Further reduced for memory efficiency
         'async_mode': 'threading',
-        'transports': ['websocket', 'polling'],
+        # Vercel serverless functions don't support WebSocket well, use polling only
+        'transports': ['polling'],
         'compression': True,
         'compression_threshold': 2048,  # Increased to reduce compression overhead
         'path': '/socket.io',
-        'allow_upgrades': True,
+        'allow_upgrades': False,  # Disable WebSocket upgrades for Vercel compatibility
         'cookie': False,
         # Performance optimizations
         'connect_timeout': 8000,   # Reduced connection timeout
@@ -2404,13 +2405,23 @@ def create_app(config_name=None):
             logger.info("Creating DatabaseBackupSystem instance")
             backup_system = DatabaseBackupSystem()
 
+            # Check if backup is enabled (handles Vercel read-only file system)
+            if not hasattr(backup_system, 'backup_enabled') or not backup_system.backup_enabled:
+                logger.warning("Backup functionality is disabled")
+                flash("Backup functionality is not available on this deployment platform (read-only file system).", "warning")
+                return render_template("backup.html",
+                                      app_name=app.config["APP_NAME"],
+                                      backups=[],
+                                      backup_disabled=True)
+
             logger.info("Listing backups")
             backups = backup_system.list_backups()
             logger.info(f"Found {len(backups)} backups")
 
             return render_template("backup.html",
                                   app_name=app.config["APP_NAME"],
-                                  backups=backups)
+                                  backups=backups,
+                                  backup_disabled=False)
         except ImportError as e:
             logger.error(f"Failed to import backup system: {e}")
             flash("Backup system module not found. Please check if backup_system.py exists.", "error")
@@ -2439,6 +2450,11 @@ def create_app(config_name=None):
         try:
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
+
+            # Check if backup is enabled
+            if not hasattr(backup_system, 'backup_enabled') or not backup_system.backup_enabled:
+                flash("❌ Backup functionality is not available on this deployment platform.", "error")
+                return redirect(url_for('backup_page'))
 
             backup_type = request.form.get("backup_type", "manual")
             backup_path = backup_system.create_backup(backup_type)

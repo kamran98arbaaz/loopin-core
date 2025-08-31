@@ -20,15 +20,16 @@ def init_socketio(socketio_instance, app):
         # Update existing options with essential settings
         current_options = socketio_instance.server_options.copy() if socketio_instance.server_options else {}
 
-        # Merge with required settings - optimized for performance
+        # Merge with required settings - optimized for Vercel serverless
         socketio_instance.server_options.update({
             'cors_allowed_origins': '*',
             'ping_timeout': 20000,  # Reduced for faster disconnect detection
             'ping_interval': 25000,  # Increased to reduce server load
             'max_http_buffer_size': 50000,  # Reduced for memory efficiency
             'async_mode': 'threading',
-            'transports': ['websocket', 'polling'],
-            'allow_upgrades': True,
+            # Vercel serverless functions don't support WebSocket well, use polling only
+            'transports': ['polling'],
+            'allow_upgrades': False,  # Disable WebSocket upgrades for Vercel compatibility
             'cookie': False,  # Disable cookies for better compatibility
             'path': '/socket.io',  # Ensure path matches client
             'compression': True,
@@ -47,15 +48,16 @@ def init_socketio(socketio_instance, app):
             if key not in socketio_instance.server_options:
                 socketio_instance.server_options[key] = value
     else:
-        # Set default options if none exist - optimized for performance
+        # Set default options if none exist - optimized for Vercel serverless
         socketio_instance.server_options = {
             'cors_allowed_origins': '*',
             'ping_timeout': 20000,  # Reduced for faster disconnect detection
             'ping_interval': 25000,  # Increased to reduce server load
             'max_http_buffer_size': 50000,  # Reduced for memory efficiency
             'async_mode': 'threading',
-            'transports': ['websocket', 'polling'],
-            'allow_upgrades': True,
+            # Vercel serverless functions don't support WebSocket well, use polling only
+            'transports': ['polling'],
+            'allow_upgrades': False,  # Disable WebSocket upgrades for Vercel compatibility
             'cookie': False,
             'path': '/socket.io',
             'compression': True,

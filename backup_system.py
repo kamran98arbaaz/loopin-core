@@ -20,18 +20,32 @@ class DatabaseBackupSystem:
 
     def __init__(self):
         self.backup_dir = Path("backups")
-        try:
-            self.backup_dir.mkdir(exist_ok=True)
-            logger.info(f"Backup directory initialized: {self.backup_dir.absolute()}")
-        except PermissionError as e:
-            logger.error(f"Permission denied creating backup directory: {e}")
-            raise RuntimeError(f"Cannot create backup directory: {e}")
-        except Exception as e:
-            logger.error(f"Error creating backup directory: {e}")
-            raise RuntimeError(f"Failed to initialize backup directory: {e}")
+        # Check if we're running on Vercel (read-only file system)
+        self.is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+        if self.is_vercel:
+            logger.warning("Running on Vercel - backup functionality disabled due to read-only file system")
+            self.backup_enabled = False
+        else:
+            try:
+                self.backup_dir.mkdir(exist_ok=True)
+                self.backup_enabled = True
+                logger.info(f"Backup directory initialized: {self.backup_dir.absolute()}")
+            except PermissionError as e:
+                logger.error(f"Permission denied creating backup directory: {e}")
+                self.backup_enabled = False
+                raise RuntimeError(f"Cannot create backup directory: {e}")
+            except Exception as e:
+                logger.error(f"Error creating backup directory: {e}")
+                self.backup_enabled = False
+                raise RuntimeError(f"Failed to initialize backup directory: {e}")
 
     def create_backup(self, backup_type: str = "manual") -> Optional[str]:
         """Create a database backup"""
+        if not self.backup_enabled:
+            logger.warning("Backup functionality is disabled (read-only file system)")
+            return None
+
         try:
             timestamp = now_utc().strftime("%Y%m%d_%H%M%S")
             backup_filename = f"loopin_backup_{backup_type}_{timestamp}"
@@ -270,6 +284,10 @@ class DatabaseBackupSystem:
 
     def list_backups(self) -> List[Dict[str, Any]]:
         """List all available backups"""
+        if not self.backup_enabled:
+            logger.warning("Backup functionality is disabled (read-only file system)")
+            return []
+
         try:
             logger.info(f"Listing backups in directory: {self.backup_dir}")
 
@@ -343,6 +361,10 @@ class DatabaseBackupSystem:
 
     def cleanup_old_backups(self, keep_days: int = 30) -> int:
         """Clean up old backup files"""
+        if not self.backup_enabled:
+            logger.warning("Backup functionality is disabled (read-only file system)")
+            return 0
+
         try:
             import time
             current_time = time.time()
