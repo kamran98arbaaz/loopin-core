@@ -39,7 +39,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from flask_migrate import Migrate
 from read_logs import bp as read_logs_bp
-from flask_login import LoginManager
+from flask_login import LoginManager, login_required
 from models import User, Update, ReadLog, SOPSummary, LessonLearned, ActivityLog, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
 from extensions import db, socketio
 from database import db_session
@@ -63,29 +63,33 @@ def performance_logger(f):
 
             # Log slow requests (>1 second)
             if duration > 1.0:
-                logger.warning(".2f"
-                               f"endpoint={request.endpoint} "
-                               f"method={request.method} "
-                               f"path={request.path} "
-                               f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}",
-                               duration)
+                logger.warning(
+                    f"Slow request - Duration: {duration:.2f}s - "
+                    f"endpoint={request.endpoint} "
+                    f"method={request.method} "
+                    f"path={request.path} "
+                    f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}"
+                )
 
             # Log all requests for performance analysis
-            logger.info(".3f"
-                       f"endpoint={request.endpoint} "
-                       f"method={request.method} "
-                       f"status={getattr(result, 'status_code', 'N/A')} "
-                       f"size={getattr(result, 'content_length', 'N/A')}")
+            logger.info(
+                f"Request completed - Duration: {duration:.3f}s - "
+                f"endpoint={request.endpoint} "
+                f"method={request.method} "
+                f"status={getattr(result, 'status_code', 'N/A')} "
+                f"size={getattr(result, 'content_length', 'N/A')}"
+            )
 
             return result
         except Exception as e:
             end_time = time.time()
             duration = end_time - start_time
-            logger.error(".2f"
-                         f"endpoint={request.endpoint} "
-                         f"method={request.method} "
-                         f"error={str(e)}",
-                         duration)
+            logger.error(
+                f"Request failed - Duration: {duration:.2f}s - "
+                f"endpoint={request.endpoint} "
+                f"method={request.method} "
+                f"error={str(e)}"
+            )
             raise
     return decorated_function
 
@@ -443,8 +447,6 @@ def create_app(config_name=None):
                 "keepalives_count": 3,  # Reduced count for faster detection
                 # Performance settings
                 "tcp_user_timeout": 30000,  # 30 second TCP timeout
-                "tcp_keepalive_probes": 3,
-                "tcp_keepalive_intvl": 15,
             }
         }
 
@@ -1994,17 +1996,37 @@ def create_app(config_name=None):
 
             # Sheet 1: Read Logs
             ws_readlogs = wb.create_sheet("Read Logs")
+            # Configure column widths
+            column_widths = {
+                'A': 10,  # Read ID
+                'B': 10,  # Update ID
+                'C': 15,  # Reader Type
+                'D': 30,  # Reader Name
+                'E': 20,  # Timestamp
+                'F': 15,  # IP Address
+                'G': 50,  # User Agent
+                'H': 50,  # Update Title
+                'I': 20,  # Process
+                'J': 20,  # Update Timestamp
+                'K': 30   # Reader Email
+            }
+
+            for col, width in column_widths.items():
+                ws_readlogs.column_dimensions[col].width = width
+
             ws_readlogs.append([
-                'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Timestamp (IST)',
-                'IP Address', 'User Agent', 'Update Title', 'Process', 'Update Timestamp (IST)'
+                'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Read Time (IST)',
+                'IP Address', 'User Agent', 'Update Content', 'Process', 'Update Time (IST)', 'Reader Email'
             ])
 
             # Style header row
-            for col_num, cell in enumerate(ws_readlogs[1], 1):
+            header = ws_readlogs[1]
+            for cell in header:
                 cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-            # Get read logs data
+            # Get read logs data with user information
             with app.app_context():
                 read_logs = db.session.query(
                     ReadLog.id,
@@ -2015,33 +2037,59 @@ def create_app(config_name=None):
                     ReadLog.ip_address,
                     ReadLog.user_agent,
                     Update.name.label('update_name'),
+                    Update.message.label('update_message'),
                     Update.process,
-                    Update.timestamp.label('update_timestamp')
+                    Update.timestamp.label('update_timestamp'),
+                    User.email.label('user_email'),
+                    User.display_name.label('user_display_name')
                 ).join(
                     Update, ReadLog.update_id == Update.id
+                ).outerjoin(
+                    User, ReadLog.user_id == User.id
                 ).order_by(
                     ReadLog.timestamp.desc()
-                ).limit(10000).all()  # Limit for performance
+                ).all()  # Remove limit for full export
 
             for log in read_logs:
                 try:
                     reader_type = 'Registered' if log.user_id else 'Guest'
-                    reader_name = log.guest_name if not log.user_id else 'N/A'
+                    reader_name = log.user_display_name if log.user_id else (log.guest_name or 'Anonymous Guest')
                     ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
                     update_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
-
-                    ws_readlogs.append([
+                    
+                    # Combine update name and message for better context
+                    update_content = f"{log.update_name}\n{log.update_message[:200]}..."
+                    
+                    # Format user agent for readability
+                    user_agent = log.user_agent or ''
+                    if len(user_agent) > 100:
+                        user_agent = user_agent[:97] + "..."
+                    
+                    row = [
                         log.id,
                         log.update_id,
                         reader_type,
                         reader_name,
                         ist_timestamp,
-                        log.ip_address or '',
-                        (log.user_agent or '')[:100],
-                        log.update_name,
-                        log.process,
-                        update_ist_timestamp
-                    ])
+                        log.ip_address or 'N/A',
+                        user_agent,
+                        update_content,
+                        log.process or 'N/A',
+                        update_ist_timestamp,
+                        log.user_email if log.user_id else 'N/A'
+                    ]
+                    
+                    ws_readlogs.append(row)
+                    
+                    # Style the row for readability
+                    row_num = ws_readlogs.max_row
+                    for col in range(1, len(row) + 1):
+                        cell = ws_readlogs.cell(row=row_num, column=col)
+                        cell.alignment = Alignment(vertical='center', wrap_text=True)
+                        
+                        # Add alternating row colors
+                        if row_num % 2 == 0:
+                            cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
                 except Exception as row_error:
                     logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
                     continue
@@ -2426,24 +2474,53 @@ def create_app(config_name=None):
                 return redirect(url_for('backup_page'))
 
             backup_path = backup_info['path']
-            json_path = f"{backup_path}.json"
 
-            if not os.path.exists(json_path):
+            if not os.path.exists(backup_path):
                 flash("Backup file not found on disk.", "error")
                 return redirect(url_for('backup_page'))
 
             # Log the download
             log_activity('downloaded', 'backup', filename, f'Backup file downloaded: {filename}')
 
-            return send_file(json_path,
-                           as_attachment=True,
-                           download_name=f"{filename}.json",
-                           mimetype='application/json')
+            return send_file(backup_path,
+                            as_attachment=True,
+                            download_name=f"{filename}.json",
+                            mimetype='application/json')
 
         except Exception as e:
             logger.error(f"Error downloading backup: {e}")
             flash("Error downloading backup file.", "error")
             return redirect(url_for('backup_page'))
+
+    @app.route("/backup/restore/<filename>", methods=["POST"])
+    @admin_required
+    @performance_logger
+    def restore_backup(filename):
+        """Restore a backup file"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+
+            # Find the backup file
+            backups = backup_system.list_backups()
+            backup_info = next((b for b in backups if b['filename'] == filename), None)
+
+            if not backup_info:
+                flash("Backup file not found.", "error")
+                return redirect(url_for('backup_page'))
+
+            backup_path = Path(backup_info['path'])
+            if backup_system.restore_backup(backup_path):
+                flash("✅ Database restored successfully.", "success")
+                log_activity('restored', 'backup', filename, f'Database restored from: {filename}')
+            else:
+                flash("❌ Failed to restore backup.", "error")
+
+        except Exception as e:
+            logger.error(f"Error restoring backup: {e}")
+            flash(f"❌ Error restoring backup: {str(e)}", "error")
+
+        return redirect(url_for('backup_page'))
 
     @app.route("/backup/delete/<filename>", methods=["POST"])
     @admin_required
@@ -2463,10 +2540,9 @@ def create_app(config_name=None):
                 return redirect(url_for('backup_page'))
 
             backup_path = backup_info['path']
-            json_path = f"{backup_path}.json"
 
-            if os.path.exists(json_path):
-                os.remove(json_path)
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
                 flash(f"✅ Backup file '{filename}' deleted successfully.", "success")
                 # Log the deletion
                 log_activity('deleted', 'backup', filename, f'Backup file deleted: {filename}')
@@ -2503,6 +2579,175 @@ def create_app(config_name=None):
             flash("Error cleaning up backup files.", "error")
 
         return redirect(url_for('backup_page'))
+
+    # Archive Management Routes
+    @app.route("/archives")
+    @login_required
+    @admin_required
+    @performance_logger
+    def archives_page():
+        """Display archived items management page"""
+        try:
+            # Get archived updates with user info
+            archived_updates = db.session.query(
+                ArchivedUpdate,
+                User.display_name.label('archived_by_name')
+            ).outerjoin(
+                User, ArchivedUpdate.archived_by == User.id
+            ).order_by(ArchivedUpdate.archived_at.desc()).all()
+
+            # Get archived SOPs with user info
+            archived_sops = db.session.query(
+                ArchivedSOPSummary,
+                User.display_name.label('archived_by_name')
+            ).outerjoin(
+                User, ArchivedSOPSummary.archived_by == User.id
+            ).order_by(ArchivedSOPSummary.archived_at.desc()).all()
+
+            # Get archived lessons with user info
+            archived_lessons = db.session.query(
+                ArchivedLessonLearned,
+                User.display_name.label('archived_by_name')
+            ).outerjoin(
+                User, ArchivedLessonLearned.archived_by == User.id
+            ).order_by(ArchivedLessonLearned.archived_at.desc()).all()
+
+            return render_template("archives.html",
+                                 archived_updates=archived_updates,
+                                 archived_sops=archived_sops,
+                                 archived_lessons=archived_lessons,
+                                 app_name=app.config["APP_NAME"])
+
+        except Exception as e:
+            logger.error(f"Error loading archives page: {e}")
+            flash("Error loading archived items.", "error")
+            return redirect(url_for("home"))
+
+    @app.route("/archives/restore/<item_type>/<item_id>", methods=["POST"])
+    @admin_required
+    def restore_archived_item(item_type, item_id):
+        """Restore an archived item back to active status"""
+        try:
+            if item_type == 'update':
+                archived_item = ArchivedUpdate.query.get(item_id)
+                if archived_item:
+                    # Create new active update
+                    new_update = Update(
+                        id=archived_item.id,
+                        name=archived_item.name,
+                        process=archived_item.process,
+                        message=archived_item.message,
+                        timestamp=archived_item.timestamp
+                    )
+                    db.session.add(new_update)
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ Update restored successfully.", "success")
+
+                    # Log activity
+                    log_activity('restored', 'update', item_id, f"Update: {archived_item.message[:50]}...")
+
+            elif item_type == 'sop':
+                archived_item = ArchivedSOPSummary.query.get(item_id)
+                if archived_item:
+                    # Create new active SOP
+                    new_sop = SOPSummary(
+                        id=archived_item.id,
+                        title=archived_item.title,
+                        summary_text=archived_item.summary_text,
+                        department=archived_item.department,
+                        tags=archived_item.tags,
+                        created_at=archived_item.created_at
+                    )
+                    db.session.add(new_sop)
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ SOP Summary restored successfully.", "success")
+
+                    # Log activity
+                    log_activity('restored', 'sop', item_id, archived_item.title)
+
+            elif item_type == 'lesson':
+                archived_item = ArchivedLessonLearned.query.get(item_id)
+                if archived_item:
+                    # Create new active lesson
+                    new_lesson = LessonLearned(
+                        id=archived_item.id,
+                        title=archived_item.title,
+                        content=archived_item.content,
+                        summary=archived_item.summary,
+                        author=archived_item.author,
+                        department=archived_item.department,
+                        tags=archived_item.tags,
+                        created_at=archived_item.created_at
+                    )
+                    db.session.add(new_lesson)
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ Lesson Learned restored successfully.", "success")
+
+                    # Log activity
+                    log_activity('restored', 'lesson', item_id, archived_item.title)
+
+            else:
+                flash("❌ Invalid item type.", "error")
+                return redirect(url_for("archives_page"))
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error restoring archived item: {e}")
+            flash("❌ Error restoring item.", "error")
+
+        return redirect(url_for("archives_page"))
+
+    @app.route("/archives/delete/<item_type>/<item_id>", methods=["POST"])
+    @admin_required
+    def delete_archived_item(item_type, item_id):
+        """Permanently delete an archived item"""
+        try:
+            if item_type == 'update':
+                archived_item = ArchivedUpdate.query.get(item_id)
+                if archived_item:
+                    entity_title = f"Update: {archived_item.message[:50]}..."
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ Archived update permanently deleted.", "success")
+
+                    # Log activity
+                    log_activity('permanently_deleted', 'update', item_id, entity_title)
+
+            elif item_type == 'sop':
+                archived_item = ArchivedSOPSummary.query.get(item_id)
+                if archived_item:
+                    entity_title = archived_item.title
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ Archived SOP permanently deleted.", "success")
+
+                    # Log activity
+                    log_activity('permanently_deleted', 'sop', item_id, entity_title)
+
+            elif item_type == 'lesson':
+                archived_item = ArchivedLessonLearned.query.get(item_id)
+                if archived_item:
+                    entity_title = archived_item.title
+                    db.session.delete(archived_item)
+                    db.session.commit()
+                    flash("✅ Archived lesson permanently deleted.", "success")
+
+                    # Log activity
+                    log_activity('permanently_deleted', 'lesson', item_id, entity_title)
+
+            else:
+                flash("❌ Invalid item type.", "error")
+                return redirect(url_for("archives_page"))
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error permanently deleting archived item: {e}")
+            flash("❌ Error deleting item.", "error")
+
+        return redirect(url_for("archives_page"))
 
     # Additional functionality removed for light version
 
@@ -2613,4 +2858,8 @@ app = create_app()
 # Vercel serverless function entry point
 # The app instance is created at module level for Vercel
 # Vercel handles the server execution automatically
+
+# Development server for local testing
+if __name__ == "__main__":
+    app.run(debug=True, host='0.0.0.0', port=5000)
 

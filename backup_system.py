@@ -55,10 +55,9 @@ class DatabaseBackupSystem:
                     "id": user.id,
                     "username": user.username,
                     "display_name": user.display_name,
+                    "email": user.email,
                     "password_hash": user.password_hash,
-                    "role": user.role,
-                    "created_at": user.created_at.isoformat() if user.created_at else None,
-                    "is_active": user.is_active
+                    "role": user.role
                 } for user in users
             ]
 
@@ -150,7 +149,7 @@ class DatabaseBackupSystem:
             if not backup_path.exists():
                 return False
 
-            with open(f"{backup_path}.json", 'r', encoding='utf-8') as f:
+            with open(backup_path, 'r', encoding='utf-8') as f:
                 backup_data = json.load(f)
 
             # Basic validation
@@ -170,7 +169,7 @@ class DatabaseBackupSystem:
         """Restore database from backup"""
         try:
             # Load backup data
-            with open(f"{backup_path}.json", 'r', encoding='utf-8') as f:
+            with open(backup_path, 'r', encoding='utf-8') as f:
                 backup_data = json.load(f)
 
             # Clear existing data (optional - be careful!)
@@ -188,10 +187,9 @@ class DatabaseBackupSystem:
                     id=user_data["id"],
                     username=user_data["username"],
                     display_name=user_data["display_name"],
+                    email=user_data.get("email"),  # Email is optional
                     password_hash=user_data["password_hash"],
-                    role=user_data.get("role", "user"),
-                    created_at=datetime.fromisoformat(user_data["created_at"]) if user_data["created_at"] else None,
-                    is_active=user_data.get("is_active", True)
+                    role=user_data.get("role", "user")
                 )
                 db.session.add(user)
 
