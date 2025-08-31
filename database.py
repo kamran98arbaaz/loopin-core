@@ -15,6 +15,26 @@ from extensions import db
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def clean_database_url(database_url):
+    """Clean invalid connection parameters from database URL that can cause psycopg2 errors."""
+    if not database_url:
+        return database_url
+
+    # Clean up invalid connection parameters that can cause psycopg2 errors
+    if 'supa=' in database_url:
+        # Remove the supa parameter which is invalid for psycopg2
+        import re
+        original_url = database_url
+        database_url = re.sub(r'&?supa=[^&]*', '', database_url)
+        # Ensure we're using postgresql:// instead of postgres://
+        database_url = database_url.replace('postgres://', 'postgresql://')
+        logger.info("Cleaned invalid 'supa' parameter from database URL")
+        logger.info(f"Original: {original_url}")
+        logger.info(f"Cleaned: {database_url}")
+        logger.info(f"Cleaned:  {database_url}")
+
+    return database_url
+
 # Database query performance monitoring
 def log_query_performance(query, params=None, duration=None):
     """Log slow database queries for performance analysis"""
@@ -212,6 +232,9 @@ def validate_database_type():
             logger.error("DATABASE_URL environment variable not set")
             return False
 
+        # Clean the database URL
+        database_url = clean_database_url(database_url)
+
         # Parse the URL to check the scheme
         from urllib.parse import urlparse
         parsed = urlparse(database_url)
@@ -354,6 +377,31 @@ def get_connection_with_retry(max_retries=3):
                 else:
                     raise Exception("Could not obtain healthy connection after retries")
         except Exception as e:
+            # Check if this is the NoSuchModuleError we're trying to fix
+            if "Can't load plugin: sqlalchemy.dialects:postgres" in str(e):
+                logger.warning("Detected PostgreSQL dialect loading error in get_connection_with_retry, attempting to fix...")
+
+                # Try to dispose the engine and recreate it with cleaned URL
+                try:
+                    db.engine.dispose()
+                    logger.info("Engine disposed due to dialect loading error in get_connection_with_retry")
+
+                    # Update the app config with cleaned URL if possible
+                    try:
+                        if hasattr(current_app, 'config') and 'SQLALCHEMY_DATABASE_URI' in current_app.config:
+                            cleaned_url = clean_database_url(current_app.config['SQLALCHEMY_DATABASE_URI'])
+                            current_app.config['SQLALCHEMY_DATABASE_URI'] = cleaned_url
+                            logger.info("Updated app config with cleaned database URL in get_connection_with_retry")
+                    except:
+                        pass
+
+                    # Try the connection again
+                    if attempt < max_retries - 1:
+                        logger.info("Retrying connection with cleaned URL...")
+                        continue
+                except Exception as dispose_e:
+                    logger.error(f"Failed to dispose engine in get_connection_with_retry: {dispose_e}")
+
             if attempt < max_retries - 1:
                 logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
                 time.sleep(0.5 * (attempt + 1))
@@ -366,7 +414,12 @@ def health_check() -> bool:
 
     # Log database connection details
     try:
+        # Get the database URL and clean it if necessary
         db_url = str(db.engine.url)
+        if 'supa=' in db_url:
+            logger.warning("Detected uncleaned database URL in engine, this may cause connection issues")
+            db_url = clean_database_url(db_url)
+
         logger.info(f"Database URL scheme: {db.engine.url.drivername}")
         logger.info(f"Database host: {db.engine.url.host}")
         logger.info(f"Database name: {db.engine.url.database}")
@@ -413,6 +466,28 @@ def health_check() -> bool:
                 logger.info("Database connection successful")
                 return True
             except SQLAlchemyError as conn_e:
+                # Check if this is the NoSuchModuleError we're trying to fix
+                if "Can't load plugin: sqlalchemy.dialects:postgres" in str(conn_e):
+                    logger.warning("Detected PostgreSQL dialect loading error, attempting to fix...")
+
+                    # Try to dispose the engine and recreate it with cleaned URL
+                    try:
+                        db.engine.dispose()
+                        logger.info("Engine disposed due to dialect loading error")
+
+                        # Update the app config with cleaned URL
+                        if hasattr(current_app, 'config') and 'SQLALCHEMY_DATABASE_URI' in current_app.config:
+                            cleaned_url = clean_database_url(current_app.config['SQLALCHEMY_DATABASE_URI'])
+                            current_app.config['SQLALCHEMY_DATABASE_URI'] = cleaned_url
+                            logger.info("Updated app config with cleaned database URL")
+
+                        # Try the connection again
+                        if attempt < max_retries - 1:
+                            logger.info("Retrying connection with cleaned URL...")
+                            continue
+                    except Exception as dispose_e:
+                        logger.error(f"Failed to dispose engine: {dispose_e}")
+
                 if attempt < max_retries - 1:
                     logger.warning(f"Connection attempt {attempt + 1} failed, retrying: {conn_e}")
                     # Force pool recycle on connection errors
@@ -427,6 +502,14 @@ def health_check() -> bool:
                     raise conn_e
 
     except SQLAlchemyError as e:
+        # Check if this is the NoSuchModuleError we're trying to fix
+        if "Can't load plugin: sqlalchemy.dialects:postgres" in str(e):
+            logger.warning("Detected PostgreSQL dialect loading error in health_check")
+            logger.warning("This is likely due to invalid connection parameters in DATABASE_URL")
+            logger.warning("The app will continue with limited database functionality")
+            logger.warning("To fix this, ensure DATABASE_URL contains only valid PostgreSQL parameters")
+            return False
+
         logger.error(f"Database health check failed: {str(e)}")
         logger.error(f"Error type: {type(e).__name__}")
         if hasattr(e, 'orig'):
