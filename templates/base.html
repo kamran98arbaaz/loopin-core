@@ -1056,20 +1056,34 @@
         </div>
 
         {% if current_user.is_authenticated %}
-          <span class="welcome-text">
-            Welcome back, {{ current_user.display_name }}
-            {% if user_role.is_admin %}
-              <span class="role-badge admin-badge">Admin</span>
-            {% elif user_role.is_editor %}
-              <span class="role-badge editor-badge">Editor</span>
-            {% endif %}
-          </span>
-          
-          <a href="{{ url_for('logout') }}" class="btn btn-outline">
-            <i class="fas fa-sign-out-alt"></i>
-            <span class="sr-only">Logout</span>
-            Logout
-          </a>
+           <!-- Export and Backup Links (Admin only) -->
+           {% if user_role.is_admin %}
+             <a href="{{ url_for('export_readlogs') }}" class="btn btn-secondary">
+               <i class="fas fa-download"></i>
+               <span class="sr-only">Export Data</span>
+               Export
+             </a>
+             <a href="{{ url_for('backup_page') }}" class="btn btn-secondary">
+               <i class="fas fa-database"></i>
+               <span class="sr-only">Database Backup</span>
+               Backup
+             </a>
+           {% endif %}
+
+           <span class="welcome-text">
+             Welcome back, {{ current_user.display_name }}
+             {% if user_role.is_admin %}
+               <span class="role-badge admin-badge">Admin</span>
+             {% elif user_role.is_editor %}
+               <span class="role-badge editor-badge">Editor</span>
+             {% endif %}
+           </span>
+
+           <a href="{{ url_for('logout') }}" class="btn btn-outline">
+             <i class="fas fa-sign-out-alt"></i>
+             <span class="sr-only">Logout</span>
+             Logout
+           </a>
         {% else %}
           <a href="{{ url_for('login', next='home' if request.endpoint == 'home' else request.endpoint) }}" class="btn btn-primary">
             <i class="fas fa-user-circle"></i>

@@ -2189,9 +2189,147 @@ def create_app(config_name=None):
 
         return redirect(url_for('export_readlogs'))
 
-    # Additional functionality removed for light version
+    # Database Backup Routes
+    @app.route("/backup")
+    @admin_required
+    @performance_logger
+    def backup_page():
+        """Show database backup management page"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+            backups = backup_system.list_backups()
 
-    # Backup and archive functionality removed for Vercel deployment
+            return render_template("backup.html",
+                                 app_name=app.config["APP_NAME"],
+                                 backups=backups)
+        except Exception as e:
+            logger.error(f"Error loading backup page: {e}")
+            flash("Error loading backup page.", "error")
+            return redirect(url_for("home"))
+
+    @app.route("/backup/create", methods=["POST"])
+    @admin_required
+    @performance_logger
+    def create_backup():
+        """Create a new database backup"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+
+            backup_type = request.form.get("backup_type", "manual")
+            backup_path = backup_system.create_backup(backup_type)
+
+            if backup_path:
+                flash(f"✅ Database backup created successfully: {backup_path}", "success")
+                # Log the backup creation
+                log_activity('created', 'backup', 'system', f'Database backup: {backup_type}')
+            else:
+                flash("❌ Failed to create database backup.", "error")
+
+        except Exception as e:
+            logger.error(f"Error creating backup: {e}")
+            flash("❌ Error creating backup.", "error")
+
+        return redirect(url_for('backup_page'))
+
+    @app.route("/backup/download/<filename>")
+    @admin_required
+    @performance_logger
+    def download_backup(filename):
+        """Download a backup file"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+
+            # Find the backup file
+            backups = backup_system.list_backups()
+            backup_info = next((b for b in backups if b['filename'] == filename), None)
+
+            if not backup_info:
+                flash("Backup file not found.", "error")
+                return redirect(url_for('backup_page'))
+
+            backup_path = backup_info['path']
+            json_path = f"{backup_path}.json"
+
+            if not os.path.exists(json_path):
+                flash("Backup file not found on disk.", "error")
+                return redirect(url_for('backup_page'))
+
+            # Log the download
+            log_activity('downloaded', 'backup', filename, f'Backup file downloaded: {filename}')
+
+            return send_file(json_path,
+                           as_attachment=True,
+                           download_name=f"{filename}.json",
+                           mimetype='application/json')
+
+        except Exception as e:
+            logger.error(f"Error downloading backup: {e}")
+            flash("Error downloading backup file.", "error")
+            return redirect(url_for('backup_page'))
+
+    @app.route("/backup/delete/<filename>", methods=["POST"])
+    @admin_required
+    @performance_logger
+    def delete_backup(filename):
+        """Delete a backup file"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+
+            # Find the backup file
+            backups = backup_system.list_backups()
+            backup_info = next((b for b in backups if b['filename'] == filename), None)
+
+            if not backup_info:
+                flash("Backup file not found.", "error")
+                return redirect(url_for('backup_page'))
+
+            backup_path = backup_info['path']
+            json_path = f"{backup_path}.json"
+
+            if os.path.exists(json_path):
+                os.remove(json_path)
+                flash(f"✅ Backup file '{filename}' deleted successfully.", "success")
+                # Log the deletion
+                log_activity('deleted', 'backup', filename, f'Backup file deleted: {filename}')
+            else:
+                flash("Backup file not found on disk.", "error")
+
+        except Exception as e:
+            logger.error(f"Error deleting backup: {e}")
+            flash("Error deleting backup file.", "error")
+
+        return redirect(url_for('backup_page'))
+
+    @app.route("/backup/cleanup", methods=["POST"])
+    @admin_required
+    @performance_logger
+    def cleanup_backups():
+        """Clean up old backup files"""
+        try:
+            from backup_system import DatabaseBackupSystem
+            backup_system = DatabaseBackupSystem()
+
+            keep_days = int(request.form.get("keep_days", 30))
+            deleted_count = backup_system.cleanup_old_backups(keep_days)
+
+            if deleted_count > 0:
+                flash(f"✅ Cleaned up {deleted_count} old backup files.", "success")
+                # Log the cleanup
+                log_activity('cleanup', 'backup', 'system', f'Cleaned up {deleted_count} old backup files')
+            else:
+                flash("No old backup files to clean up.", "info")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up backups: {e}")
+            flash("Error cleaning up backup files.", "error")
+
+        return redirect(url_for('backup_page'))
+
+    # Additional functionality removed for light version
 
     # Add cache control for static files to prevent 304 caching issues
     @app.after_request
