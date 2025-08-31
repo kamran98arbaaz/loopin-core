@@ -15,6 +15,17 @@ from extensions import db
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Database query performance monitoring
+def log_query_performance(query, params=None, duration=None):
+    """Log slow database queries for performance analysis"""
+    if duration and duration > 0.5:  # Log queries taking more than 500ms
+        logger.warning(".3f"
+                      f"query_type={type(query).__name__} "
+                      f"params={str(params)[:100] if params else 'None'}")
+    elif duration:
+        logger.info(".3f"
+                   f"query_type={type(query).__name__}")
+
 def get_db_url():
     """Get database URL with proper SSL configuration"""
     db_url = current_app.config['SQLALCHEMY_DATABASE_URI']

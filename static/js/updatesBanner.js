@@ -87,32 +87,49 @@ class UpdatesBanner {
         this.banner.style.display = 'block';
         this.isVisible = true;
 
-        try {
-            // Add cache busting and timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
+        // Retry logic for free tier timeout issues
+        let retries = 3;
 
-            const response = await fetch('/api/recent-updates?' + new URLSearchParams({
-                _: Date.now() // Cache busting
-            }), {
-                signal: controller.signal,
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                // Add cache busting and timeout (increased for free tier)
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); // Increased timeout
+
+                const fetchUrl = '/api/recent-updates?' + new URLSearchParams({
+                    _: Date.now() // Cache busting
+                });
+
+                const response = await fetch(fetchUrl, {
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                clearTimeout(timeoutId);
+
+                const data = await response.json();
+
+                if (data.success && data.updates && data.updates.length > 0) {
+                    this.populateBanner(data.updates);
+                    return; // Success, exit retry loop
+                } else {
+                    this.showEmptyBanner();
+                    return; // Empty but successful response, exit retry loop
                 }
-            });
-
-            clearTimeout(timeoutId);
-            const data = await response.json();
-
-            if (data.success && data.updates) {
-                this.populateBanner(data.updates);
-            } else {
-                this.showEmptyBanner();
+            } catch (error) {
+                // If this is the last attempt, show error state
+                if (attempt === retries) {
+                    console.error('Failed to load updates after retries:', error);
+                    this.showErrorBanner();
+                } else {
+                    // Wait before retry (exponential backoff)
+                    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
             }
-        } catch (error) {
-            console.error('Error fetching recent updates:', error);
-            this.showEmptyBanner();
         }
     }
 
@@ -169,6 +186,33 @@ class UpdatesBanner {
                 <p style="text-align: center; color: var(--gray-500); padding: var(--space-4);">
                     No recent updates available
                 </p>
+            </div>
+        `;
+        this.banner.style.display = 'block';
+        this.isVisible = true;
+    }
+
+    showErrorBanner() {
+        if (!this.banner || !this.bannerList) return;
+
+        this.bannerList.innerHTML = `
+            <div class="banner-error-state">
+                <p style="text-align: center; color: var(--red-500); padding: var(--space-4);">
+                    Unable to load updates. Please try again.
+                </p>
+                <button onclick="window.updatesBanner?.showBanner()" style="
+                    display: block;
+                    margin: 0 auto;
+                    padding: var(--space-2) var(--space-4);
+                    background: var(--primary-600);
+                    color: white;
+                    border: none;
+                    border-radius: var(--radius-2);
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                ">
+                    Retry
+                </button>
             </div>
         `;
         this.banner.style.display = 'block';
@@ -243,14 +287,14 @@ class UpdatesBanner {
         try {
             const response = await fetch('/api/latest-update-time');
             const data = await response.json();
-            
+
             if (data.success && data.latest_timestamp) {
                 const latestTime = new Date(data.latest_timestamp);
                 const now = new Date();
                 const diffHours = (now - latestTime) / (1000 * 60 * 60);
-                
+
                 const badge = document.getElementById('bell-badge');
-                
+
                 if (badge) {
                     if (diffHours <= 24) {
                         badge.style.display = 'block';

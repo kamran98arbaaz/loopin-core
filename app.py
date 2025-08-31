@@ -2,7 +2,7 @@ import os
 
 # Removed gevent monkey patching - using sync workers for better SQLAlchemy compatibility
 if os.getenv("FLASK_ENV") == "development":
-    print("ℹ️ Using sync workers (no gevent monkey patching)")
+    print("INFO: Using sync workers (no gevent monkey patching)")
 import time
 import uuid
 import pytz
@@ -29,6 +29,43 @@ from io import BytesIO
 import sys
 import subprocess
 from pathlib import Path
+
+# Performance monitoring
+def performance_logger(f):
+    """Decorator to log response times for performance monitoring"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        start_time = time.time()
+        try:
+            result = f(*args, **kwargs)
+            end_time = time.time()
+            duration = end_time - start_time
+
+            # Log slow requests (>1 second)
+            if duration > 1.0:
+                logger.warning(".2f"
+                              f"endpoint={request.endpoint} "
+                              f"method={request.method} "
+                              f"path={request.path} "
+                              f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}")
+
+            # Log all requests for performance analysis
+            logger.info(".3f"
+                       f"endpoint={request.endpoint} "
+                       f"method={request.method} "
+                       f"status={getattr(result, 'status_code', 'N/A')} "
+                       f"size={getattr(result, 'content_length', 'N/A')}")
+
+            return result
+        except Exception as e:
+            end_time = time.time()
+            duration = end_time - start_time
+            logger.error(".2f"
+                        f"endpoint={request.endpoint} "
+                        f"method={request.method} "
+                        f"error={str(e)}")
+            raise
+    return decorated_function
 
 # Lightweight CSV export available for light version
 EXCEL_EXPORT_AVAILABLE = True  # CSV export implemented for light version
@@ -184,12 +221,12 @@ def create_app(config_name=None):
 
         # Log Render environment info (only in development)
         if os.getenv("FLASK_ENV") == "development":
-            print(f"🎨 Render Environment: {os.getenv('RENDER')}")
-            print(f"🎨 Render Service ID: {os.getenv('RENDER_SERVICE_ID', 'Not set')}")
-            print(f"🎨 Render Service Name: {os.getenv('RENDER_SERVICE_NAME', 'Not set')}")
-            print(f"🎨 Render External URL: {os.getenv('RENDER_EXTERNAL_URL', 'Not set')}")
-            print(f"🎨 Render Git Commit: {os.getenv('RENDER_GIT_COMMIT', 'Not set')}")
-            print(f"🎨 Render Git Branch: {os.getenv('RENDER_GIT_BRANCH', 'Not set')}")
+            print(f"RENDER Environment: {os.getenv('RENDER')}")
+            print(f"RENDER Service ID: {os.getenv('RENDER_SERVICE_ID', 'Not set')}")
+            print(f"RENDER Service Name: {os.getenv('RENDER_SERVICE_NAME', 'Not set')}")
+            print(f"RENDER External URL: {os.getenv('RENDER_EXTERNAL_URL', 'Not set')}")
+            print(f"RENDER Git Commit: {os.getenv('RENDER_GIT_COMMIT', 'Not set')}")
+            print(f"RENDER Git Branch: {os.getenv('RENDER_GIT_BRANCH', 'Not set')}")
 
     # Database configuration - DATABASE_URL should be set from the first configuration block
     database_url = app.config['SQLALCHEMY_DATABASE_URI']
@@ -627,8 +664,9 @@ def create_app(config_name=None):
 
     # Routes
     @app.route("/health")
+    @performance_logger
     def health():
-        """Optimized health check endpoint"""
+        """Optimized health check endpoint with performance monitoring"""
         try:
             # Comprehensive database readiness check
             from database import ensure_database_ready
@@ -642,14 +680,25 @@ def create_app(config_name=None):
             # Test database connection efficiently
             db.session.execute(text("SELECT 1"))
 
+            # Memory usage monitoring for free tier
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / 1024 / 1024
+
             out = {
                 "status": "ok",
                 "db": "connected",
                 "database_type": db.engine.url.drivername,
+                "memory_usage_mb": round(memory_mb, 2),
                 "timestamp": now_utc().isoformat()
             }
 
-            # Memory and Redis monitoring removed for light version
+            # Log memory usage for monitoring
+            if memory_mb > 400:  # Log if memory usage is high for 512MB tier
+                logger.warning(".2f"
+                              f"memory_percent={(memory_mb/512)*100:.1f}")
 
             return jsonify(out), 200
         except Exception as e:
@@ -673,7 +722,124 @@ def create_app(config_name=None):
         return render_template("view_lesson_learned.html", lesson=lesson)
 
     @app.route("/search")
+    @performance_logger
     def search():
+        query = request.args.get("q", "").strip()
+        results = []
+
+        # Get filter parameters
+        category = request.args.get("category", "")
+        process = request.args.get("process", "")
+        department = request.args.get("department", "")
+        date_range = request.args.get("date_range", "")
+
+        # Prepare filters for template
+        filters = {
+            "category": category,
+            "process": process,
+            "department": department,
+            "date_range": date_range
+        }
+
+        # Available options for filters
+        available_processes = ["ABC", "XYZ", "AB"]
+        available_departments = ["ABC", "XYZ", "AB"]  # Fixed to match process options
+
+        if query:
+            # Limit search results to prevent performance issues
+            limit_per_category = 20
+
+            # Case-insensitive search
+            query_filter = f"%{query}%"
+
+            # Search Updates (if no category filter or category is 'updates')
+            if not category or category == "updates":
+                updates_query = Update.query.filter(
+                    or_(
+                        Update.message.ilike(query_filter),
+                        Update.name.ilike(query_filter),
+                        Update.process.ilike(query_filter)
+                    )
+                )
+
+                # Apply process filter
+                if process:
+                    updates_query = updates_query.filter(Update.process.ilike(f"%{process}%"))
+
+                updates_rows = updates_query.order_by(Update.timestamp.desc()).limit(limit_per_category).all()
+
+                for upd in updates_rows:
+                    results.append({
+                        "id": upd.id,
+                        "title": f"{upd.process} - {upd.name}",
+                        "content": upd.message[:200] + ("..." if len(upd.message) > 200 else ""),
+                        "type": "update",
+                        "url": url_for("view_update", update_id=upd.id),
+                        "author": upd.name,
+                        "created_at": upd.timestamp,
+                        "process": upd.process
+                    })
+
+            # Search SOP Summaries (if no category filter or category is 'sops')
+            if not category or category == "sops":
+                sops_query = SOPSummary.query.filter(
+                    or_(
+                        SOPSummary.title.ilike(query_filter),
+                        SOPSummary.summary_text.ilike(query_filter)
+                    )
+                )
+
+                # Apply department filter
+                if department:
+                    sops_query = sops_query.filter(SOPSummary.department.ilike(f"%{department}%"))
+
+                sops_rows = sops_query.order_by(SOPSummary.created_at.desc()).limit(limit_per_category).all()
+
+                for sop in sops_rows:
+                    results.append({
+                        "id": sop.id,
+                        "title": sop.title,
+                        "content": sop.summary_text[:200] + ("..." if len(sop.summary_text) > 200 else ""),
+                        "type": "sop",
+                        "url": url_for("view_sop_summary", summary_id=sop.id),
+                        "created_at": sop.created_at,
+                        "tags": sop.tags or []
+                    })
+
+            # Search Lessons Learned (if no category filter or category is 'lessons')
+            if not category or category == "lessons":
+                lessons_query = LessonLearned.query.filter(
+                    or_(
+                        LessonLearned.title.ilike(query_filter),
+                        LessonLearned.content.ilike(query_filter),
+                        LessonLearned.summary.ilike(query_filter)
+                    )
+                )
+
+                # Apply department filter
+                if department:
+                    lessons_query = lessons_query.filter(LessonLearned.department.ilike(f"%{department}%"))
+
+                lessons_rows = lessons_query.order_by(LessonLearned.created_at.desc()).limit(limit_per_category).all()
+
+                for lesson in lessons_rows:
+                    results.append({
+                        "id": lesson.id,
+                        "title": lesson.title,
+                        "content": (lesson.summary or lesson.content or "")[:200] + ("..." if len(lesson.summary or lesson.content or "") > 200 else ""),
+                        "type": "lesson",
+                        "url": url_for("view_lesson_learned", lesson_id=lesson.id),
+                        "author": lesson.author,
+                        "created_at": lesson.created_at,
+                        "tags": lesson.tags or []
+                    })
+
+        return render_template("search_results.html",
+                              query=query,
+                              results=results,
+                              filters=filters,
+                              available_processes=available_processes,
+                              available_departments=available_departments)
         query = request.args.get("q", "").strip()
         results = []
 
@@ -791,6 +957,7 @@ def create_app(config_name=None):
 
 
     @app.route("/")
+    @performance_logger
     def home():
         try:
             # Limit the number of items loaded for better performance
@@ -821,23 +988,25 @@ def create_app(config_name=None):
                                   excel_export_available=EXCEL_EXPORT_AVAILABLE)
 
     @app.route("/updates")
+    @performance_logger
     def show_updates():
         # Get filter parameters from query string
         selected_process = request.args.get("process", "")
         selected_department = request.args.get("department", "")
         sort = request.args.get("sort", "newest")
-        
-        # Base query
-        base_query = (
-            db.session.query(Update, func.count(ReadLog.id).label('read_count'))
-            .outerjoin(ReadLog, ReadLog.update_id == Update.id)
-            .group_by(Update.id)
-        )
-        
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 50)), 100)  # Limit to 100 max
+
+        # Calculate offset for pagination
+        offset = (page - 1) * per_page
+
+        # Optimized base query with pagination
+        base_query = db.session.query(Update)
+
         # Apply process filter if specified
         if selected_process:
             base_query = base_query.filter(Update.process == selected_process)
-        
+
         # Apply sorting
         if sort == "oldest":
             base_query = base_query.order_by(Update.timestamp.asc())
@@ -847,14 +1016,30 @@ def create_app(config_name=None):
             base_query = base_query.order_by(Update.name.asc(), Update.timestamp.desc())
         else:  # newest (default)
             base_query = base_query.order_by(Update.timestamp.desc())
-        
-        rows = base_query.all()
+
+        # Get total count for pagination
+        total_updates = base_query.count()
+
+        # Apply pagination
+        paginated_updates = base_query.offset(offset).limit(per_page).all()
+
+        # Get read counts efficiently using a single query
+        update_ids = [upd.id for upd in paginated_updates]
+        if update_ids:
+            read_counts = dict(
+                db.session.query(ReadLog.update_id, func.count(ReadLog.id))
+                .filter(ReadLog.update_id.in_(update_ids))
+                .group_by(ReadLog.update_id)
+                .all()
+            )
+        else:
+            read_counts = {}
 
         updates = []
         current_time = now_utc()
-        for upd, count in rows:
+        for upd in paginated_updates:
             d = upd.to_dict()
-            d['read_count'] = count
+            d['read_count'] = read_counts.get(upd.id, 0)
 
             # determine if it's within last 24 hours
             d['is_new'] = is_within_hours(upd.timestamp, 24, current_time)
@@ -868,16 +1053,21 @@ def create_app(config_name=None):
         # Use distinct queries instead of loading all records
         unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
         processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
-        
+
         # Calculate updates this week more efficiently
         week_ago = get_hours_ago(24 * 7)
         updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
-        
+
         # Get unique departments (consistent with other forms)
         departments = ["ABC", "XYZ", "AB"]
-        
-        return render_template("show.html", 
-                             app_name=app.config["APP_NAME"], 
+
+        # Calculate pagination info
+        total_pages = (total_updates + per_page - 1) // per_page
+        has_next = page < total_pages
+        has_prev = page > 1
+
+        return render_template("show.html",
+                             app_name=app.config["APP_NAME"],
                              updates=updates,
                              unique_authors=unique_authors,
                              processes=processes,
@@ -885,7 +1075,13 @@ def create_app(config_name=None):
                              updates_this_week=updates_this_week,
                              selected_process=selected_process,
                              selected_department=selected_department,
-                             sort=sort)
+                             sort=sort,
+                             page=page,
+                             per_page=per_page,
+                             total_updates=total_updates,
+                             total_pages=total_pages,
+                             has_next=has_next,
+                             has_prev=has_prev)
 
     @app.route("/post", methods=["GET", "POST"])
     @writer_required
@@ -1156,39 +1352,13 @@ def create_app(config_name=None):
     @app.route("/api/latest-update-time")
     def api_latest_update_time():
         """API endpoint to get the timestamp of the most recent update"""
-        session = None
         try:
-            # Validate database readiness before operation
-            from database import ensure_database_ready
-            if not ensure_database_ready():
-                logger.error("Database not ready for latest-update-time operation")
-                return jsonify({
-                    "latest_timestamp": None,
-                    "success": False,
-                    "error": "Database not ready"
-                }), 503
+            # Use optimized query for free tier - only select timestamp column
+            latest_timestamp = db.session.query(Update.timestamp).order_by(Update.timestamp.desc()).first()
 
-            # Use a more robust session management approach
-            session = db.session()
-
-            # Check if the updates table exists before querying
-            from sqlalchemy import inspect
-            inspector = inspect(db.engine)
-            existing_tables = inspector.get_table_names()
-
-            if 'updates' not in existing_tables:
-                logger.warning("Updates table does not exist, returning null timestamp")
-                return jsonify({
-                    "latest_timestamp": None,
-                    "success": True,
-                    "message": "Updates table not found"
-                })
-
-            latest_update = session.query(Update).order_by(Update.timestamp.desc()).first()
-
-            if latest_update:
+            if latest_timestamp:
                 # Ensure timezone is properly handled
-                timestamp = ensure_timezone(latest_update.timestamp, UTC)
+                timestamp = ensure_timezone(latest_timestamp.timestamp, UTC)
                 result = {
                     "latest_timestamp": timestamp.isoformat(),
                     "success": True
@@ -1199,37 +1369,40 @@ def create_app(config_name=None):
                     "success": True
                 }
 
-            session.commit()  # Explicitly commit the transaction
             return jsonify(result)
 
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
-            # Try to rollback if there's an active transaction
-            if session:
-                try:
-                    session.rollback()
-                except Exception as rollback_e:
-                    logger.error(f"Error rolling back session: {rollback_e}")
-
             return jsonify({
                 "latest_timestamp": None,
                 "success": False,
                 "error": str(e)
             }), 500
-        finally:
-            # Always close the session
-            if session:
-                try:
-                    session.close()
-                except Exception as close_e:
-                    logger.error(f"Error closing session: {close_e}")
     
     # New routes for SOP Summaries
     @app.route("/sop_summaries")
     @login_required
+    @performance_logger
     def list_sop_summaries():
-        sops = SOPSummary.query.order_by(SOPSummary.created_at.desc()).all()
-        return render_template("sop_summaries.html", summaries=sops)
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 50)  # Limit to 50 max
+        offset = (page - 1) * per_page
+
+        # Get paginated results
+        paginated_sops = SOPSummary.query.order_by(SOPSummary.created_at.desc()).offset(offset).limit(per_page).all()
+
+        # Get total count for pagination
+        total_sops = SOPSummary.query.count()
+        total_pages = (total_sops + per_page - 1) // per_page
+
+        return render_template("sop_summaries.html",
+                             summaries=paginated_sops,
+                             page=page,
+                             per_page=per_page,
+                             total_sops=total_sops,
+                             total_pages=total_pages,
+                             has_next=page < total_pages,
+                             has_prev=page > 1)
 
     @app.route("/sop_summaries/add", methods=["GET", "POST"])
     @writer_required
@@ -1361,9 +1534,27 @@ def create_app(config_name=None):
     # New routes for Lessons Learned
     @app.route("/lessons_learned")
     @login_required
+    @performance_logger
     def list_lessons_learned():
-        lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).all()
-        return render_template("lessons_learned.html", lessons=lessons)
+        page = int(request.args.get("page", 1))
+        per_page = min(int(request.args.get("per_page", 20)), 50)  # Limit to 50 max
+        offset = (page - 1) * per_page
+
+        # Get paginated results
+        paginated_lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).offset(offset).limit(per_page).all()
+
+        # Get total count for pagination
+        total_lessons = LessonLearned.query.count()
+        total_pages = (total_lessons + per_page - 1) // per_page
+
+        return render_template("lessons_learned.html",
+                             lessons=paginated_lessons,
+                             page=page,
+                             per_page=per_page,
+                             total_lessons=total_lessons,
+                             total_pages=total_pages,
+                             has_next=page < total_pages,
+                             has_prev=page > 1)
 
     @app.route("/lessons_learned/add", methods=["GET", "POST"])
     @writer_required
@@ -1547,8 +1738,14 @@ def create_app(config_name=None):
             # Calculate 24 hours ago
             twenty_four_hours_ago = get_hours_ago(24)
 
-            # Query for recent updates
-            recent_updates = Update.query.filter(
+            # Use more efficient query with explicit column selection for free tier optimization
+            recent_updates = db.session.query(
+                Update.id,
+                Update.name,
+                Update.process,
+                Update.message,
+                Update.timestamp
+            ).filter(
                 Update.timestamp >= twenty_four_hours_ago
             ).order_by(Update.timestamp.desc()).limit(10).all()
 
@@ -1576,6 +1773,7 @@ def create_app(config_name=None):
                 "updates": updates_data
             })
         except Exception as e:
+            logger.error(f"Error in recent-updates: {str(e)}")
             return jsonify({
                 "success": False,
                 "error": str(e)
@@ -1584,6 +1782,7 @@ def create_app(config_name=None):
     # Lightweight CSV export functionality for read logs (optimized for Render free tier)
     @app.route("/export_readlogs")
     @export_required
+    @performance_logger
     def export_readlogs():
         """Enhanced CSV export with read logs, activity logs, analytics, and metrics"""
         logger.info("Export read logs function called")
