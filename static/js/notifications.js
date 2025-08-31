@@ -408,6 +408,8 @@ function showToast(message, duration = 6000) {
             closeToast(toast);
         }, duration);
     }
+
+    return toast; // Return the toast for tracking
 }
 
 // Close toast function
@@ -441,9 +443,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Update unread counter display
     updateUnreadCounterEnhanced(unreadCount);
 
-    // Check for recent updates and show badge periodically
+    // Check for recent updates and show badge periodically - optimized
     checkForRecentUpdatesAndShowBadge();
-    setInterval(checkForRecentUpdatesAndShowBadge, 300000); // Check every 5 minutes to reduce server load
+    setInterval(checkForRecentUpdatesAndShowBadge, 600000); // Check every 10 minutes to reduce server load
 
     // Update notifications panel
     updateNotificationsPanel();
@@ -536,13 +538,20 @@ function testSocketConnection() {
     }, 5000);
 }
 
-// Connection error handling
+// Connection error handling - optimized for performance
 let connectionErrorToast = null;
 let connectionErrorCount = 0;
 let lastConnectionErrorTime = 0;
+let isReconnecting = false; // Prevent duplicate reconnection attempts
 
 function showConnectionErrorToast() {
     const now = Date.now();
+
+    // Check if we already have an active error toast to prevent piling
+    if (connectionErrorToast && document.body.contains(connectionErrorToast)) {
+        return;
+    }
+
     // Only show error toast if it's been more than 30 seconds since last error
     if (now - lastConnectionErrorTime < 30000) {
         return;
@@ -551,11 +560,11 @@ function showConnectionErrorToast() {
     lastConnectionErrorTime = now;
     connectionErrorCount++;
 
-    // Remove existing error toast
-    clearConnectionErrorToast();
-
     // Only show error toast after 3 failed attempts
     if (connectionErrorCount >= 3) {
+        // Double-check and clear any existing toasts before creating new one
+        clearAllConnectionErrorToasts();
+
         connectionErrorToast = showToast(
             '⚠️ Real-time updates connection lost. Using offline mode.',
             'permanent'
@@ -566,6 +575,25 @@ function showConnectionErrorToast() {
 function clearConnectionErrorToast() {
     if (connectionErrorToast) {
         closeToast(connectionErrorToast);
+        connectionErrorToast = null;
+    }
+}
+
+// Clear all connection error toasts from DOM to prevent piling
+function clearAllConnectionErrorToasts() {
+    // Find all toasts with the connection error message
+    const errorToasts = document.querySelectorAll('.toast');
+
+    errorToasts.forEach(toast => {
+        const toastContent = toast.querySelector('.toast-content') || toast;
+        if (toastContent && toastContent.innerHTML &&
+            toastContent.innerHTML.includes('Real-time updates connection lost')) {
+            closeToast(toast);
+        }
+    });
+
+    // Also clear the tracked toast reference
+    if (connectionErrorToast) {
         connectionErrorToast = null;
     }
 }
@@ -626,8 +654,8 @@ function attachSocketEventHandlers() {
         console.log('📊 Requesting initial unread count...');
         socket.emit('get_unread_count');
 
-        // Clear any connection error toasts
-        clearConnectionErrorToast();
+        // Clear any connection error toasts (including piled ones)
+        clearAllConnectionErrorToasts();
         connectionErrorCount = 0; // Reset error count on successful connection
     });
 
@@ -653,7 +681,8 @@ function attachSocketEventHandlers() {
 
     socket.on('reconnect', function(attemptNumber) {
         console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
-        clearConnectionErrorToast();
+        isReconnecting = false; // Reset reconnection flag
+        clearAllConnectionErrorToasts();
         connectionErrorCount = 0;
     });
 

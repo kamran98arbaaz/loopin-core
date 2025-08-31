@@ -99,22 +99,22 @@
             <tr>
               <td class="backup-filename">
                 <i class="fas fa-file-archive"></i>
-                {{ backup.file.name }}
+                {{ backup.filename }}
               </td>
               <td>
-                <span class="backup-type-badge {{ backup.metadata.backup_type }}">
-                  {{ backup.metadata.backup_type.title() }}
+                <span class="backup-type-badge {{ backup.type }}">
+                  {{ backup.type.title() }}
                 </span>
               </td>
               <td class="backup-size">
-                {{ "%.1f"|format(backup.metadata.file_size / (1024 * 1024)) }} MB
+                {{ "%.1f"|format(backup.size / (1024 * 1024)) }} MB
               </td>
               <td class="backup-date">
-                {{ backup.metadata.created_at | format_backup_timestamp }}
+                {{ backup.timestamp | format_backup_timestamp }}
               </td>
               <td class="backup-actions">
                 <form method="POST" action="{{ url_for('restore_backup') }}" class="inline-form">
-                  <input type="hidden" name="backup_file" value="{{ backup.file.name }}">
+                  <input type="hidden" name="backup_file" value="{{ backup.filename }}">
                   <button type="submit" class="btn btn-warning btn-small"
                           onclick="return confirm('⚠️ WARNING: This will replace all current data with the backup data. Are you sure you want to restore from this backup?')">
                     <i class="fas fa-undo"></i>
@@ -122,7 +122,7 @@
                   </button>
                 </form>
                 <form method="POST" action="{{ url_for('delete_backup') }}" class="inline-form">
-                  <input type="hidden" name="backup_file" value="{{ backup.file.name }}">
+                  <input type="hidden" name="backup_file" value="{{ backup.filename }}">
                   <button type="submit" class="btn btn-danger btn-small"
                           onclick="return confirm('⚠️ PERMANENTLY DELETE this backup file? This action cannot be undone!')">
                     <i class="fas fa-trash"></i>

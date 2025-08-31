@@ -109,27 +109,96 @@ login_manager.login_view = 'login'
 # Process start timestamp for basic metrics
 APP_START = time.time()
 
-# Simple in-memory cache for performance optimization
+# Enhanced in-memory cache for performance optimization
 _cache = {}
 CACHE_TIMEOUT = 300  # 5 minutes
+MAX_CACHE_SIZE = 1000  # Prevent memory leaks
+
+def get_cache_size():
+    """Get current cache size"""
+    return len(_cache)
+
+def cleanup_expired_cache():
+    """Clean up expired cache entries"""
+    current_time = time.time()
+    expired_keys = [
+        key for key, (cached_time, _) in _cache.items()
+        if current_time - cached_time >= CACHE_TIMEOUT
+    ]
+    for key in expired_keys:
+        del _cache[key]
+
+    # If cache is still too large, remove oldest entries
+    if len(_cache) > MAX_CACHE_SIZE:
+        sorted_items = sorted(_cache.items(), key=lambda x: x[1][0])
+        for key, _ in sorted_items[:len(_cache) - MAX_CACHE_SIZE]:
+            del _cache[key]
 
 def get_cached_user_role(user_id):
-    """Get cached user role information"""
+    """Get cached user role information with improved performance"""
     cache_key = f"user_role_{user_id}"
+    current_time = time.time()
+
     if cache_key in _cache:
         cached_time, role_info = _cache[cache_key]
-        if time.time() - cached_time < CACHE_TIMEOUT:
+        if current_time - cached_time < CACHE_TIMEOUT:
             return role_info
         else:
             del _cache[cache_key]
 
+    # Clean up expired entries periodically
+    if len(_cache) > MAX_CACHE_SIZE * 0.8:  # Clean when 80% full
+        cleanup_expired_cache()
+
     user = User.query.get(user_id)
     if user:
         role_info = get_user_role_info(user)
-        _cache[cache_key] = (time.time(), role_info)
+        _cache[cache_key] = (current_time, role_info)
         return role_info
 
     return {'is_admin': False, 'is_editor': False, 'is_writer': False, 'is_deleter': False, 'is_exporter': False}
+
+def get_cached_update_count():
+    """Cache total update count for performance"""
+    cache_key = "total_update_count"
+    current_time = time.time()
+
+    if cache_key in _cache:
+        cached_time, count = _cache[cache_key]
+        if current_time - cached_time < 60:  # Cache for 1 minute
+            return count
+        else:
+            del _cache[cache_key]
+
+    count = Update.query.count()
+    _cache[cache_key] = (current_time, count)
+    return count
+
+def get_cached_recent_updates(limit=10):
+    """Cache recent updates for performance"""
+    cache_key = f"recent_updates_{limit}"
+    current_time = time.time()
+
+    if cache_key in _cache:
+        cached_time, updates = _cache[cache_key]
+        if current_time - cached_time < 120:  # Cache for 2 minutes
+            return updates
+        else:
+            del _cache[cache_key]
+
+    recent_updates = Update.query.order_by(Update.timestamp.desc()).limit(limit).all()
+    updates_data = []
+    for update in recent_updates:
+        updates_data.append({
+            'id': update.id,
+            'name': update.name,
+            'process': update.process,
+            'message': update.message,
+            'timestamp': update.timestamp
+        })
+
+    _cache[cache_key] = (current_time, updates_data)
+    return updates_data
 
 def create_app(config_name=None):
     app = Flask(__name__)
@@ -170,20 +239,32 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     
-    # Initialize Socket.IO with optimized configuration
+    # Initialize Socket.IO with optimized configuration for performance
     socketio_kwargs = {
         'message_queue': None,
         'cors_allowed_origins': '*',
-        'ping_timeout': 30000,  # 30 seconds
-        'ping_interval': 15000,  # 15 seconds
-        'max_http_buffer_size': 500000,
+        'ping_timeout': 25000,  # Reduced from 30s for faster disconnect detection
+        'ping_interval': 20000,  # Increased from 15s to reduce server load
+        'max_http_buffer_size': 100000,  # Reduced from 500KB for memory efficiency
         'async_mode': 'threading',
         'transports': ['websocket', 'polling'],
         'compression': True,
-        'compression_threshold': 512,
-        'path': '/socket.io',  # Ensure path matches client
+        'compression_threshold': 1024,  # Increased from 512B to reduce compression overhead
+        'path': '/socket.io',
         'allow_upgrades': True,
-        'cookie': False
+        'cookie': False,
+        # Performance optimizations
+        'connect_timeout': 10000,  # 10 second connection timeout
+        'upgrade_timeout': 5000,   # 5 second upgrade timeout
+        'max_reconnection_attempts': 5,  # Limit reconnection attempts
+        'reconnection_delay': 2000,  # 2 second base delay
+        'reconnection_delay_max': 10000,  # Max 10 second delay
+        'randomization_factor': 0.3,  # Less randomization for predictability
+        # Memory optimizations
+        'max_http_buffer_size': 100000,
+        'http_compression': True,
+        'per_message_deflate': True,
+        'force_base64': False  # Disable base64 for better performance
     }
 
     # Initialize Socket.IO blueprint first
@@ -300,22 +381,29 @@ def create_app(config_name=None):
             "connect_args": ssl_config,
             # Optimized connection pool settings for Vercel deployment
             "pool_pre_ping": True,
-            "pool_recycle": 300,  # Recycle connections every 5 minutes
-            "pool_timeout": 20,   # Connection timeout
-            "pool_size": 3,       # Base pool size for Vercel
-            "max_overflow": 5,    # Maximum overflow
+            "pool_recycle": 600,  # Increased to 10 minutes for better stability
+            "pool_timeout": 15,   # Reduced timeout for faster failure detection
+            "pool_size": 2,       # Reduced base pool size for memory efficiency
+            "max_overflow": 3,    # Reduced overflow for memory efficiency
             # Transaction isolation and connection stability
-            "isolation_level": "READ_COMMITTED",  # Explicit isolation level
-            "echo": False,  # Disable SQL echoing in production
-            "pool_reset_on_return": "rollback",  # Reset connections on return
+            "isolation_level": "READ_COMMITTED",
+            "echo": False,
+            "pool_reset_on_return": "rollback",
+            # Performance optimizations
+            "pool_use_lifo": True,  # Use LIFO for better cache locality
+            "poolclass": None,  # Use default pool class
             # Additional stability settings
             "connect_args": {
                 **ssl_config,
-                "application_name": "loopin-core",  # Identify connections
-                "keepalives": 1,  # Enable TCP keepalives
-                "keepalives_idle": 30,  # TCP keepalive settings
-                "keepalives_interval": 10,
-                "keepalives_count": 5,
+                "application_name": "loopin-core",
+                "keepalives": 1,
+                "keepalives_idle": 60,  # Increased idle time
+                "keepalives_interval": 15,  # Increased interval
+                "keepalives_count": 3,  # Reduced count for faster detection
+                # Performance settings
+                "tcp_user_timeout": 30000,  # 30 second TCP timeout
+                "tcp_keepalive_probes": 3,
+                "tcp_keepalive_intvl": 15,
             }
         }
 
@@ -1017,28 +1105,38 @@ def create_app(config_name=None):
     @performance_logger
     def home():
         try:
-            # Limit the number of items loaded for better performance
+            # Use cached data for better performance
             summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(10).all()
             lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(10).all()
 
-            # Get latest updates for the home page with read counts
-            latest_updates = Update.query.order_by(Update.timestamp.desc()).limit(5).all()
+            # Use cached recent updates for better performance
+            latest_updates = get_cached_recent_updates(5)
             updates_data = []
 
+            # Get read counts efficiently using a single query
+            if latest_updates:
+                update_ids = [update['id'] for update in latest_updates]
+                read_counts = dict(
+                    db.session.query(ReadLog.update_id, func.count(ReadLog.id))
+                    .filter(ReadLog.update_id.in_(update_ids))
+                    .group_by(ReadLog.update_id)
+                    .all()
+                )
+            else:
+                read_counts = {}
+
+            current_time = now_utc()
             for update in latest_updates:
-                update_dict = update.to_dict()
-                # Get read count efficiently
-                read_count = db.session.query(func.count(ReadLog.id)).filter(
-                    ReadLog.update_id == update.id
-                ).scalar()
-                update_dict['read_count'] = read_count
-                update_dict['is_new'] = is_within_hours(update.timestamp, 24, now_utc())
+                update_dict = update.copy()
+                update_dict['read_count'] = read_counts.get(update['id'], 0)
+                update_dict['is_new'] = is_within_hours(update['timestamp'], 24, current_time)
                 updates_data.append(update_dict)
 
             return render_template("home.html", app_name=app.config["APP_NAME"],
                                   summaries=summaries, lessons=lessons, updates=updates_data,
                                   excel_export_available=EXCEL_EXPORT_AVAILABLE)
         except Exception as e:
+            logger.error(f"Error loading home page: {e}")
             # Return a basic template without updates if there's an error
             return render_template("home.html", app_name=app.config["APP_NAME"],
                                   summaries=[], lessons=[], updates=[],
@@ -1402,28 +1500,22 @@ def create_app(config_name=None):
 
     @app.route("/api/latest-update-time")
     def api_latest_update_time():
-        """API endpoint to get the timestamp of the most recent update"""
+        """API endpoint to get the timestamp of the most recent update - optimized"""
         try:
-            # Use proper database session management to prevent lock issues
-            from database import db_session
-            with db_session() as session:
-                # Use optimized query for free tier - only select timestamp column
-                latest_timestamp = session.query(Update.timestamp).order_by(Update.timestamp.desc()).first()
+            # Use cached recent updates for better performance
+            recent_updates = get_cached_recent_updates(1)
+            if recent_updates:
+                result = {
+                    "latest_timestamp": recent_updates[0]['timestamp'].isoformat(),
+                    "success": True
+                }
+            else:
+                result = {
+                    "latest_timestamp": None,
+                    "success": True
+                }
 
-                if latest_timestamp:
-                    # Ensure timezone is properly handled
-                    timestamp = ensure_timezone(latest_timestamp.timestamp, UTC)
-                    result = {
-                        "latest_timestamp": timestamp.isoformat(),
-                        "success": True
-                    }
-                else:
-                    result = {
-                        "latest_timestamp": None,
-                        "success": True
-                    }
-
-                return jsonify(result)
+            return jsonify(result)
 
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
@@ -2217,19 +2309,28 @@ def create_app(config_name=None):
     def backup_page():
         """Show database backup management page"""
         try:
+            logger.info("Loading backup page - importing backup system")
             from backup_system import DatabaseBackupSystem
+
+            logger.info("Creating DatabaseBackupSystem instance")
             backup_system = DatabaseBackupSystem()
+
+            logger.info("Listing backups")
             backups = backup_system.list_backups()
+            logger.info(f"Found {len(backups)} backups")
 
             return render_template("backup.html",
-                                 app_name=app.config["APP_NAME"],
-                                 backups=backups)
+                                  app_name=app.config["APP_NAME"],
+                                  backups=backups)
         except ImportError as e:
             logger.error(f"Failed to import backup system: {e}")
             flash("Backup system module not found.", "error")
             return redirect(url_for("home"))
         except Exception as e:
             logger.error(f"Error loading backup page: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             flash("Error loading backup page. Please try again later.", "error")
             return redirect(url_for("home"))
 

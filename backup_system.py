@@ -265,9 +265,21 @@ class DatabaseBackupSystem:
     def list_backups(self) -> List[Dict[str, Any]]:
         """List all available backups"""
         try:
+            logger.info(f"Listing backups in directory: {self.backup_dir}")
+
+            # Ensure backup directory exists
+            if not self.backup_dir.exists():
+                logger.info(f"Backup directory {self.backup_dir} does not exist, creating it")
+                self.backup_dir.mkdir(parents=True, exist_ok=True)
+                return []
+
             backups = []
-            for backup_file in self.backup_dir.glob("*.json"):
+            json_files = list(self.backup_dir.glob("*.json"))
+            logger.info(f"Found {len(json_files)} JSON files in backup directory")
+
+            for backup_file in json_files:
                 try:
+                    logger.debug(f"Processing backup file: {backup_file}")
                     with open(backup_file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
 
@@ -283,23 +295,32 @@ class DatabaseBackupSystem:
                         logger.warning(f"Backup file {backup_file} missing required metadata fields, skipping")
                         continue
 
-                    backups.append({
+                    backup_info = {
                         "filename": backup_file.stem,
                         "timestamp": metadata["timestamp"],
                         "type": metadata.get("type", "unknown"),
                         "size": backup_file.stat().st_size,
                         "path": str(backup_file)
-                    })
+                    }
+                    backups.append(backup_info)
+                    logger.debug(f"Added backup: {backup_info['filename']}")
+
                 except json.JSONDecodeError as e:
                     logger.warning(f"Invalid JSON in backup file {backup_file}: {e}, skipping")
+                    continue
+                except PermissionError as e:
+                    logger.warning(f"Permission denied reading backup file {backup_file}: {e}, skipping")
                     continue
                 except Exception as e:
                     logger.warning(f"Failed to read backup metadata for {backup_file}: {e}, skipping")
                     continue
 
+            logger.info(f"Successfully processed {len(backups)} backups")
+
             # Sort by timestamp (newest first)
             try:
                 backups.sort(key=lambda x: x["timestamp"], reverse=True)
+                logger.info("Backups sorted by timestamp")
             except Exception as e:
                 logger.warning(f"Failed to sort backups by timestamp: {e}")
                 # Return unsorted list if sorting fails
@@ -309,6 +330,9 @@ class DatabaseBackupSystem:
 
         except Exception as e:
             logger.error(f"Failed to list backups: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return []
 
     def cleanup_old_backups(self, keep_days: int = 30) -> int:
