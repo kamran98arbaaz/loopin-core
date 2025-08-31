@@ -3,6 +3,26 @@ import os
 # Removed gevent monkey patching - using sync workers for better SQLAlchemy compatibility
 if os.getenv("FLASK_ENV") == "development":
     print("INFO: Using sync workers (no gevent monkey patching)")
+
+# Import psycopg2 to register PostgreSQL dialect with SQLAlchemy
+try:
+    import psycopg2
+    # Explicitly register the PostgreSQL dialect for SQLAlchemy
+    from sqlalchemy.dialects import postgresql
+
+    # Try to manually register the dialect if needed
+    try:
+        from sqlalchemy.dialects import registry
+        if hasattr(registry, '_load'):
+            # SQLAlchemy 1.4 style
+            registry._load('postgres', 'sqlalchemy.dialects.postgresql')
+        print("INFO: psycopg2 and PostgreSQL dialect imported successfully")
+    except Exception as reg_e:
+        print(f"INFO: psycopg2 imported, dialect registration skipped: {reg_e}")
+
+except ImportError:
+    print("ERROR: psycopg2 not available for PostgreSQL support")
+
 import time
 import uuid
 import pytz
@@ -80,12 +100,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Set up advanced logging configuration
-try:
-    from logging_config import setup_logging
-    # This will be called after app creation
-except ImportError:
-    logger.warning("logging_config module not found - using basic logging")
+# Logging configuration removed for Vercel deployment
 
 migrate = Migrate()
 login_manager = LoginManager()
@@ -124,8 +139,19 @@ def create_app(config_name=None):
 
     # For Vercel, DATABASE_URL should be set from environment variables
     if not database_url:
-        # For local development, use a default PostgreSQL URL
-        database_url = "postgresql://localhost/loopin_dev"
+        # For local development without DATABASE_URL, use SQLite as fallback
+        if os.getenv("FLASK_ENV") == "development":
+            database_url = "sqlite:///loopin_dev.db"
+            print("WARNING: No DATABASE_URL set, using SQLite for local development")
+        else:
+            # For production (Vercel), DATABASE_URL is required
+            database_url = "postgresql://localhost/loopin_dev"  # This will fail but shows the requirement
+
+    # For SQLAlchemy 2.0 compatibility, ensure the database URL uses the correct format
+    if database_url.startswith('postgres://'):
+        # Convert postgres:// to postgresql:// for SQLAlchemy 2.0
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        print(f"INFO: Converted database URL to: {database_url}")
 
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -217,10 +243,13 @@ def create_app(config_name=None):
     if os.getenv("FLASK_ENV") == "development":
         print(f"Using database: {database_url}")
 
-    # Validate database type early in startup
-    from database import validate_database_type
-    if not validate_database_type():
-        logger.warning("Database type validation failed - using fallback configuration")
+    # Skip database type validation for local development with SQLite fallback
+    flask_env = os.getenv("FLASK_ENV")
+    database_url = os.getenv('DATABASE_URL')
+    if not (flask_env == "development" and not database_url):
+        from database import validate_database_type
+        if not validate_database_type():
+            logger.warning("Database type validation failed - using fallback configuration")
 
     # Additional validation for SQLite detection
     parsed = urlparse(database_url)
@@ -286,6 +315,19 @@ def create_app(config_name=None):
             "max_overflow": 20,
             "pool_reset_on_return": "rollback",
         }
+
+    # Ensure PostgreSQL dialect is loaded before initializing the database
+    try:
+        from sqlalchemy.dialects import postgresql
+        print("INFO: PostgreSQL dialect loaded before db.init_app")
+
+        # Try to manually register the dialect if needed
+        from sqlalchemy.engine import url
+        from sqlalchemy import pool
+        print("INFO: Attempting manual dialect registration")
+
+    except ImportError as e:
+        print(f"WARNING: Could not load PostgreSQL dialect: {e}")
 
     db.init_app(app)
 
@@ -2113,346 +2155,7 @@ def create_app(config_name=None):
 
     # Additional functionality removed for light version
 
-    @app.route("/backup")
-    @admin_required
-    def backup_page():
-        """Display backup management page."""
-        try:
-            from backup_system import DatabaseBackupSystem
-            backup_system = DatabaseBackupSystem()
-            backups = backup_system.list_backups()
-            return render_template('backup.html',
-                                 app_name=app.config["APP_NAME"],
-                                 backups=backups)
-        except Exception as e:
-            flash(f"❌ Error loading backup page: {str(e)}", "error")
-            return redirect(url_for('home'))
-
-    @app.route("/backup/create", methods=["POST"])
-    @admin_required
-    def create_backup():
-        """Create a new database backup."""
-        try:
-            from backup_system import DatabaseBackupSystem
-            backup_system = DatabaseBackupSystem()
-
-            backup_type = request.form.get('backup_type', 'manual')
-            backup_path = backup_system.create_backup(backup_type)
-
-            if backup_path:
-                flash(f"✅ Backup created successfully: {backup_path.name}", "success")
-            else:
-                flash("❌ Failed to create backup. Check logs for details.", "error")
-
-        except Exception as e:
-            flash(f"❌ Error creating backup: {str(e)}", "error")
-
-        return redirect(url_for('backup_page'))
-
-    @app.route("/backup/restore", methods=["POST"])
-    @admin_required
-    def restore_backup():
-        """Restore database from backup with improved error handling."""
-        import threading
-        import time
-
-        try:
-            backup_file = request.form.get('backup_file')
-            if not backup_file:
-                flash("❌ Please select a backup file to restore.", "error")
-                return redirect(url_for('backup_page'))
-
-            backup_path = Path("backups") / backup_file
-
-            # Check if backup file exists
-            if not backup_path.exists():
-                flash(f"❌ Backup file not found: {backup_file}", "error")
-                return redirect(url_for('backup_page'))
-
-            # Quick verification
-            from backup_system import DatabaseBackupSystem
-            backup_system = DatabaseBackupSystem()
-
-            if not backup_system.verify_backup(backup_path):
-                flash("❌ Backup file verification failed. Cannot restore.", "error")
-                return redirect(url_for('backup_page'))
-
-            # Perform restore with Flask application context
-            def restore_with_app_context():
-                try:
-                    # Ensure we're within Flask application context
-                    with app.app_context():
-                        return backup_system.restore_backup(backup_path)
-                except Exception as e:
-                    logger.error(f"Restore error in thread: {e}")
-                    return False
-
-            # Start restore in background with timeout
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(restore_with_app_context)
-                try:
-                    # Wait up to 90 seconds for restore to complete (matching backend timeout)
-                    result = future.result(timeout=90)
-                    if result:
-                        flash("✅ Database restored successfully from backup. Archived items have been restored to their original locations.", "success")
-                        # Log the restore activity
-                        log_activity('restored', 'database', backup_file, f"Database restored from {backup_file}")
-                    else:
-                        flash("❌ Failed to restore backup. Check logs for details.", "error")
-                except concurrent.futures.TimeoutError:
-                    flash("⚠️ Restore operation timed out after 90 seconds. Please check if restore completed successfully.", "warning")
-                except Exception as e:
-                    flash(f"❌ Restore operation failed: {str(e)}", "error")
-
-        except Exception as e:
-            flash(f"❌ Error during restore process: {str(e)}", "error")
-            logger.error(f"Backup restore error: {e}")
-
-        return redirect(url_for('backup_page'))
-
-    @app.route("/backup/cleanup", methods=["POST"])
-    @admin_required
-    def cleanup_backups():
-        """Clean up old backups."""
-        try:
-            from backup_system import DatabaseBackupSystem
-            backup_system = DatabaseBackupSystem()
-            backup_system.cleanup_old_backups()
-            flash("✅ Old backups cleaned up successfully.", "success")
-        except Exception as e:
-            flash(f"❌ Error cleaning up backups: {str(e)}", "error")
-
-        return redirect(url_for('backup_page'))
-
-    @app.route("/backup/delete", methods=["POST"])
-    @admin_required
-    def delete_backup():
-        """Delete a backup file permanently."""
-        try:
-            backup_filename = request.form.get('backup_file')
-            if not backup_filename:
-                flash("❌ No backup file specified.", "error")
-                return redirect(url_for('backup_page'))
-
-            from backup_system import DatabaseBackupSystem
-            backup_system = DatabaseBackupSystem()
-
-            # Get the backup file path
-            backup_path = backup_system.backup_dir / backup_filename
-            metadata_path = backup_path.with_suffix('.json')
-
-            if not backup_path.exists():
-                flash("❌ Backup file not found.", "error")
-                return redirect(url_for('backup_page'))
-
-            # Delete the backup file and its metadata
-            backup_path.unlink()
-            if metadata_path.exists():
-                metadata_path.unlink()
-
-            flash(f"✅ Backup file '{backup_filename}' deleted successfully.", "success")
-
-            # Log activity
-            log_activity('deleted', 'backup_file', backup_filename, f"Backup: {backup_filename}")
-
-        except Exception as e:
-            flash(f"❌ Error deleting backup file: {str(e)}", "error")
-
-        return redirect(url_for('backup_page'))
-
-    @app.route("/archives")
-    @admin_required
-    def archives_page():
-        """Display archived items management page."""
-        try:
-            # Get archived items with user info - using explicit aliases to avoid parameter conflicts
-            from sqlalchemy.orm import aliased
-            user_alias = aliased(User)
-
-            archived_updates = db.session.query(
-                ArchivedUpdate,
-                user_alias.display_name.label('archived_by_name')
-            ).outerjoin(
-                user_alias, ArchivedUpdate.archived_by == user_alias.id
-            ).order_by(ArchivedUpdate.archived_at.desc()).all()
-
-            archived_sops = db.session.query(
-                ArchivedSOPSummary,
-                user_alias.display_name.label('archived_by_name')
-            ).outerjoin(
-                user_alias, ArchivedSOPSummary.archived_by == user_alias.id
-            ).order_by(ArchivedSOPSummary.archived_at.desc()).all()
-
-            archived_lessons = db.session.query(
-                ArchivedLessonLearned,
-                user_alias.display_name.label('archived_by_name')
-            ).outerjoin(
-                user_alias, ArchivedLessonLearned.archived_by == user_alias.id
-            ).order_by(ArchivedLessonLearned.archived_at.desc()).all()
-
-            return render_template('archives.html',
-                                 app_name=app.config["APP_NAME"],
-                                 archived_updates=archived_updates,
-                                 archived_sops=archived_sops,
-                                 archived_lessons=archived_lessons)
-        except Exception as e:
-            flash(f"❌ Error loading archives: {str(e)}", "error")
-            return redirect(url_for('backup_page'))
-
-    @app.route("/archives/restore/<item_type>/<item_id>", methods=["POST"])
-    @admin_required
-    def restore_archived_item(item_type, item_id):
-        """Restore an archived item."""
-        try:
-            if item_type == 'update':
-                # For updates, item_id is a string (UUID)
-                archived_item = ArchivedUpdate.query.get(item_id)
-                if archived_item:
-                    # Create new update from archived data
-                    restored_update = Update(
-                        id=archived_item.id,
-                        name=archived_item.name,
-                        process=archived_item.process,
-                        message=archived_item.message,
-                        timestamp=archived_item.timestamp
-                    )
-                    db.session.add(restored_update)
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ Update restored successfully.", "success")
-
-                    # Log activity
-                    log_activity('restored', 'update', archived_item.id, f"Update: {archived_item.message[:50]}...")
-
-            elif item_type == 'sop':
-                # For SOPs, item_id is an integer
-                try:
-                    sop_id = int(item_id)
-                    archived_item = ArchivedSOPSummary.query.get(sop_id)
-                except ValueError:
-                    flash("❌ Invalid SOP ID format.", "error")
-                    return redirect(url_for('archives_page'))
-
-                if archived_item:
-                    restored_sop = SOPSummary(
-                        title=archived_item.title,
-                        summary_text=archived_item.summary_text,
-                        department=archived_item.department,
-                        tags=archived_item.tags,
-                        created_at=archived_item.created_at
-                    )
-                    db.session.add(restored_sop)
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ SOP restored successfully.", "success")
-
-                    # Log activity
-                    log_activity('restored', 'sop', restored_sop.id, archived_item.title)
-
-            elif item_type == 'lesson':
-                # For lessons, item_id is an integer
-                try:
-                    lesson_id = int(item_id)
-                    archived_item = ArchivedLessonLearned.query.get(lesson_id)
-                except ValueError:
-                    flash("❌ Invalid Lesson ID format.", "error")
-                    return redirect(url_for('archives_page'))
-
-                if archived_item:
-                    restored_lesson = LessonLearned(
-                        title=archived_item.title,
-                        content=archived_item.content,
-                        summary=archived_item.summary,
-                        author=archived_item.author,
-                        department=archived_item.department,
-                        tags=archived_item.tags,
-                        created_at=archived_item.created_at
-                    )
-                    db.session.add(restored_lesson)
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ Lesson Learned restored successfully.", "success")
-
-                    # Log activity
-                    log_activity('restored', 'lesson', restored_lesson.id, archived_item.title)
-
-            else:
-                flash("❌ Invalid item type.", "error")
-
-        except Exception as e:
-            db.session.rollback()
-            flash(f"❌ Error restoring item: {str(e)}", "error")
-
-        return redirect(url_for('archives_page'))
-
-    @app.route("/archives/delete/<item_type>/<item_id>", methods=["POST"])
-    @admin_required
-    def delete_archived_item(item_type, item_id):
-        """Permanently delete an archived item."""
-        try:
-            if item_type == 'update':
-                # For updates, item_id is a string (UUID)
-                archived_item = ArchivedUpdate.query.get(item_id)
-                if archived_item:
-                    entity_title = f"Update: {archived_item.message[:50]}..."
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ Archived update permanently deleted.", "success")
-
-                    # Log activity
-                    log_activity('permanently_deleted', 'archived_update', archived_item.id, entity_title)
-                else:
-                    flash("❌ Archived update not found.", "error")
-
-            elif item_type == 'sop':
-                # For SOPs, item_id is an integer
-                try:
-                    sop_id = int(item_id)
-                    archived_item = ArchivedSOPSummary.query.get(sop_id)
-                except ValueError:
-                    flash("❌ Invalid SOP ID format.", "error")
-                    return redirect(url_for('archives_page'))
-
-                if archived_item:
-                    entity_title = archived_item.title
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ Archived SOP permanently deleted.", "success")
-
-                    # Log activity
-                    log_activity('permanently_deleted', 'archived_sop', str(sop_id), entity_title)
-                else:
-                    flash("❌ Archived SOP not found.", "error")
-
-            elif item_type == 'lesson':
-                # For lessons, item_id is an integer
-                try:
-                    lesson_id = int(item_id)
-                    archived_item = ArchivedLessonLearned.query.get(lesson_id)
-                except ValueError:
-                    flash("❌ Invalid lesson ID format.", "error")
-                    return redirect(url_for('archives_page'))
-
-                if archived_item:
-                    entity_title = archived_item.title
-                    db.session.delete(archived_item)
-                    db.session.commit()
-                    flash("✅ Archived lesson permanently deleted.", "success")
-
-                    # Log activity
-                    log_activity('permanently_deleted', 'archived_lesson', str(lesson_id), entity_title)
-                else:
-                    flash("❌ Archived lesson not found.", "error")
-
-            else:
-                flash("❌ Invalid item type.", "error")
-
-        except Exception as e:
-            db.session.rollback()
-            flash(f"❌ Error deleting archived item: {str(e)}", "error")
-
-        return redirect(url_for('archives_page'))
+    # Backup and archive functionality removed for Vercel deployment
 
     # Add cache control for static files to prevent 304 caching issues
     @app.after_request
@@ -2551,12 +2254,7 @@ def create_app(config_name=None):
         except:
             pass
 
-    # Set up logging after app creation
-    try:
-        from logging_config import setup_logging
-        setup_logging(app)
-    except Exception as e:
-        logger.warning(f"Failed to set up advanced logging: {e}")
+    # Logging setup removed for Vercel deployment
 
     return app
 

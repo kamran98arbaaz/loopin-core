@@ -1,13 +1,28 @@
 {
   "version": 2,
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index"
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index"
     }
   ],
   "env": {
     "FLASK_ENV": "production",
-    "FLASK_APP": "app.py"
+    "FLASK_APP": "app.py",
+    "PYTHONPATH": "."
+  },
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 30
+    }
   }
 }

@@ -44,7 +44,7 @@ class Config:
     UPLOAD_FOLDER = "uploads"
 
 class ProductionConfig(Config):
-    """Production configuration."""
+    """Production configuration for Vercel."""
     ENV = "production"
     DEBUG = False
     TESTING = False
@@ -57,16 +57,15 @@ class ProductionConfig(Config):
         raise RuntimeError("SQLite database detected in production - PostgreSQL required")
     SQLALCHEMY_DATABASE_URI = database_url
 
-    # Render-optimized SQLAlchemy engine options
+    # Vercel-optimized SQLAlchemy engine options
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,      # Enable connection health checks
         "pool_recycle": 300,        # Recycle connections after 5 minutes
-        "pool_timeout": 30,         # Increased timeout for Render
-        "max_overflow": 5,          # Reduced overflow for Render limits
-        "pool_size": 5,            # Base pool size for Render
+        "pool_timeout": 20,         # Connection timeout
+        "max_overflow": 5,          # Maximum overflow
+        "pool_size": 3,            # Base pool size for Vercel
         "echo": False,             # Don't log SQL statements in production
         "echo_pool": False,        # Don't log pool operations
-        "pool_use_lifo": True,     # Use LIFO to reduce number of connections
         "pool_reset_on_return": "rollback"  # Reset connection state on return
     }
 
