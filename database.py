@@ -92,22 +92,12 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
                 'cannot notify on un-acquired lock' in error_str or
                 'cannot wait on un-acquired lock' in error_str or
                 'advisory' in error_str):
-                logger.warning("=== LOCK ERROR DETECTED ===")
-                logger.warning(f"Lock error message: {str(e)}")
-                logger.warning(f"Error type: {type(e).__name__}")
-                if hasattr(e, 'orig'):
-                    logger.warning(f"Original error: {e.orig}")
-                    if hasattr(e.orig, 'pgcode'):
-                        logger.warning(f"PostgreSQL error code: {e.orig.pgcode}")
+                logger.warning("Lock error detected, performing cleanup")
+                logger.warning(f"Lock error: {str(e)}")
+                if hasattr(e, 'orig') and hasattr(e.orig, 'pgcode'):
+                    logger.warning(f"PostgreSQL error code: {e.orig.pgcode}")
 
-                # Log current connection pool status
-                try:
-                    pool = db.engine.pool
-                    logger.warning(f"Pool status before cleanup: size={getattr(pool, 'size', 'N/A')}, overflow={getattr(pool, '_overflow', 'N/A')}")
-                except Exception as pool_e:
-                    logger.warning(f"Could not get pool status: {pool_e}")
-
-                logger.warning("Performing comprehensive cleanup")
+                logger.warning("Performing database cleanup")
                 cleanup_db()
                 # Force engine disposal to clear any stale connections
                 try:
@@ -128,7 +118,7 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
                 except Exception as lock_e:
                     logger.error(f"Error removing lock file: {lock_e}")
 
-                logger.warning("=== LOCK ERROR CLEANUP COMPLETE ===")
+                logger.warning("Lock error cleanup completed")
 
             try:
                 session.rollback()
@@ -158,7 +148,11 @@ def init_db(app):
 def cleanup_db():
     """Clean up database connections."""
     try:
+        # Close any active transactions
+        if db.session.is_active:
+            db.session.rollback()
         db.session.remove()
+        current_app.logger.debug("Database session cleaned up successfully")
     except Exception as e:
         current_app.logger.error(f"Error cleaning up database session: {str(e)}")
 
