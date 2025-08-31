@@ -1347,23 +1347,26 @@ def create_app(config_name=None):
     def api_latest_update_time():
         """API endpoint to get the timestamp of the most recent update"""
         try:
-            # Use optimized query for free tier - only select timestamp column
-            latest_timestamp = db.session.query(Update.timestamp).order_by(Update.timestamp.desc()).first()
+            # Use proper database session management to prevent lock issues
+            from database import db_session
+            with db_session() as session:
+                # Use optimized query for free tier - only select timestamp column
+                latest_timestamp = session.query(Update.timestamp).order_by(Update.timestamp.desc()).first()
 
-            if latest_timestamp:
-                # Ensure timezone is properly handled
-                timestamp = ensure_timezone(latest_timestamp.timestamp, UTC)
-                result = {
-                    "latest_timestamp": timestamp.isoformat(),
-                    "success": True
-                }
-            else:
-                result = {
-                    "latest_timestamp": None,
-                    "success": True
-                }
+                if latest_timestamp:
+                    # Ensure timezone is properly handled
+                    timestamp = ensure_timezone(latest_timestamp.timestamp, UTC)
+                    result = {
+                        "latest_timestamp": timestamp.isoformat(),
+                        "success": True
+                    }
+                else:
+                    result = {
+                        "latest_timestamp": None,
+                        "success": True
+                    }
 
-            return jsonify(result)
+                return jsonify(result)
 
         except Exception as e:
             logger.error(f"Error getting latest update time: {e}")
