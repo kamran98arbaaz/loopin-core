@@ -990,6 +990,20 @@ def create_app(config_name=None):
     @app.route("/updates")
     @performance_logger
     def show_updates():
+        import time as time_module
+        import psutil
+        import os
+
+        logger.info("=== SHOW_UPDATES DEBUG START ===")
+        logger.info(f"Request parameters: process={request.args.get('process')}, page={request.args.get('page')}, sort={request.args.get('sort')}")
+
+        # Log connection pool status
+        try:
+            pool = db.engine.pool
+            logger.info(f"Connection pool status: size={getattr(pool, 'size', 'N/A')}, overflow={getattr(pool, '_overflow', 'N/A')}")
+        except Exception as pool_e:
+            logger.warning(f"Could not get pool status: {pool_e}")
+
         # Get filter parameters from query string
         selected_process = request.args.get("process", "")
         selected_department = request.args.get("department", "")
@@ -1001,62 +1015,114 @@ def create_app(config_name=None):
         offset = (page - 1) * per_page
 
         # Optimized base query with pagination
-        base_query = db.session.query(Update)
+        logger.info("Step 1: Creating base query")
+        start_time = time_module.time()
+        try:
+            base_query = db.session.query(Update)
+            logger.info(".4f")
+        except Exception as e:
+            logger.error(f"ERROR in base query creation: {e}")
+            raise
 
         # Apply process filter if specified
         if selected_process:
-            base_query = base_query.filter(Update.process == selected_process)
+            logger.info(f"Step 2: Applying process filter: {selected_process}")
+            try:
+                base_query = base_query.filter(Update.process == selected_process)
+                logger.info(".4f")
+            except Exception as e:
+                logger.error(f"ERROR in process filter: {e}")
+                raise
 
         # Apply sorting
-        if sort == "oldest":
-            base_query = base_query.order_by(Update.timestamp.asc())
-        elif sort == "process":
-            base_query = base_query.order_by(Update.process.asc(), Update.timestamp.desc())
-        elif sort == "author":
-            base_query = base_query.order_by(Update.name.asc(), Update.timestamp.desc())
-        else:  # newest (default)
-            base_query = base_query.order_by(Update.timestamp.desc())
+        logger.info(f"Step 3: Applying sorting: {sort}")
+        try:
+            if sort == "oldest":
+                base_query = base_query.order_by(Update.timestamp.asc())
+            elif sort == "process":
+                base_query = base_query.order_by(Update.process.asc(), Update.timestamp.desc())
+            elif sort == "author":
+                base_query = base_query.order_by(Update.name.asc(), Update.timestamp.desc())
+            else:  # newest (default)
+                base_query = base_query.order_by(Update.timestamp.desc())
+            logger.info(".4f")
+        except Exception as e:
+            logger.error(f"ERROR in sorting: {e}")
+            raise
 
         # Get total count for pagination
-        total_updates = base_query.count()
+        logger.info("Step 4: Getting total count")
+        try:
+            total_updates = base_query.count()
+            logger.info(f"Total updates count: {total_updates} (took .4f)")
+        except Exception as e:
+            logger.error(f"ERROR in count query: {e}")
+            raise
 
         # Apply pagination
-        paginated_updates = base_query.offset(offset).limit(per_page).all()
+        logger.info(f"Step 5: Applying pagination (offset={offset}, limit={per_page})")
+        try:
+            paginated_updates = base_query.offset(offset).limit(per_page).all()
+            logger.info(f"Retrieved {len(paginated_updates)} updates (took .4f)")
+        except Exception as e:
+            logger.error(f"ERROR in pagination query: {e}")
+            raise
 
         # Get read counts efficiently using a single query
+        logger.info("Step 6: Getting read counts")
         update_ids = [upd.id for upd in paginated_updates]
         if update_ids:
-            read_counts = dict(
-                db.session.query(ReadLog.update_id, func.count(ReadLog.id))
-                .filter(ReadLog.update_id.in_(update_ids))
-                .group_by(ReadLog.update_id)
-                .all()
-            )
+            try:
+                read_counts = dict(
+                    db.session.query(ReadLog.update_id, func.count(ReadLog.id))
+                    .filter(ReadLog.update_id.in_(update_ids))
+                    .group_by(ReadLog.update_id)
+                    .all()
+                )
+                logger.info(f"Retrieved read counts for {len(read_counts)} updates (took .4f)")
+            except Exception as e:
+                logger.error(f"ERROR in read counts query: {e}")
+                raise
         else:
             read_counts = {}
+            logger.info("No updates to get read counts for")
 
+        logger.info("Step 7: Processing update data")
         updates = []
         current_time = now_utc()
         for upd in paginated_updates:
             d = upd.to_dict()
             d['read_count'] = read_counts.get(upd.id, 0)
-
-            # determine if it's within last 24 hours
             d['is_new'] = is_within_hours(upd.timestamp, 24, current_time)
-
-            # Add the original datetime object for isoformat() in template
             d['timestamp_obj'] = upd.timestamp
-
             updates.append(d)
 
         # Get additional data for template more efficiently
-        # Use distinct queries instead of loading all records
-        unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
-        processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
+        logger.info("Step 8: Getting unique authors")
+        try:
+            unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
+            logger.info(f"Retrieved {len(unique_authors)} unique authors (took .4f)")
+        except Exception as e:
+            logger.error(f"ERROR in unique authors query: {e}")
+            raise
+
+        logger.info("Step 9: Getting unique processes")
+        try:
+            processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
+            logger.info(f"Retrieved {len(processes)} processes (took .4f)")
+        except Exception as e:
+            logger.error(f"ERROR in processes query: {e}")
+            raise
 
         # Calculate updates this week more efficiently
-        week_ago = get_hours_ago(24 * 7)
-        updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
+        logger.info("Step 10: Calculating updates this week")
+        try:
+            week_ago = get_hours_ago(24 * 7)
+            updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
+            logger.info(f"Updates this week: {updates_this_week} (took .4f)")
+        except Exception as e:
+            logger.error(f"ERROR in updates this week query: {e}")
+            raise
 
         # Get unique departments (consistent with other forms)
         departments = ["ABC", "XYZ", "AB"]
@@ -1066,22 +1132,25 @@ def create_app(config_name=None):
         has_next = page < total_pages
         has_prev = page > 1
 
+        logger.info("=== SHOW_UPDATES DEBUG END ===")
+        logger.info(f"Final result: {len(updates)} updates, page {page}/{total_pages}")
+
         return render_template("show.html",
-                             app_name=app.config["APP_NAME"],
-                             updates=updates,
-                             unique_authors=unique_authors,
-                             processes=processes,
-                             departments=departments,
-                             updates_this_week=updates_this_week,
-                             selected_process=selected_process,
-                             selected_department=selected_department,
-                             sort=sort,
-                             page=page,
-                             per_page=per_page,
-                             total_updates=total_updates,
-                             total_pages=total_pages,
-                             has_next=has_next,
-                             has_prev=has_prev)
+                              app_name=app.config["APP_NAME"],
+                              updates=updates,
+                              unique_authors=unique_authors,
+                              processes=processes,
+                              departments=departments,
+                              updates_this_week=updates_this_week,
+                              selected_process=selected_process,
+                              selected_department=selected_department,
+                              sort=sort,
+                              page=page,
+                              per_page=per_page,
+                              total_updates=total_updates,
+                              total_pages=total_pages,
+                              has_next=has_next,
+                              has_prev=has_prev)
 
     @app.route("/post", methods=["GET", "POST"])
     @writer_required

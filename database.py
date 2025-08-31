@@ -90,8 +90,24 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
             error_str = str(e).lower()
             if ('lock' in error_str or 'deadlock' in error_str or
                 'cannot notify on un-acquired lock' in error_str or
+                'cannot wait on un-acquired lock' in error_str or
                 'advisory' in error_str):
-                logger.warning("Lock-related error detected, performing comprehensive cleanup")
+                logger.warning("=== LOCK ERROR DETECTED ===")
+                logger.warning(f"Lock error message: {str(e)}")
+                logger.warning(f"Error type: {type(e).__name__}")
+                if hasattr(e, 'orig'):
+                    logger.warning(f"Original error: {e.orig}")
+                    if hasattr(e.orig, 'pgcode'):
+                        logger.warning(f"PostgreSQL error code: {e.orig.pgcode}")
+
+                # Log current connection pool status
+                try:
+                    pool = db.engine.pool
+                    logger.warning(f"Pool status before cleanup: size={getattr(pool, 'size', 'N/A')}, overflow={getattr(pool, '_overflow', 'N/A')}")
+                except Exception as pool_e:
+                    logger.warning(f"Could not get pool status: {pool_e}")
+
+                logger.warning("Performing comprehensive cleanup")
                 cleanup_db()
                 # Force engine disposal to clear any stale connections
                 try:
@@ -111,6 +127,8 @@ def db_session(max_retries=3, initial_retry_delay=1) -> Generator:
                             logger.info(f"Removed SQLite lock file: {lock_file}")
                 except Exception as lock_e:
                     logger.error(f"Error removing lock file: {lock_e}")
+
+                logger.warning("=== LOCK ERROR CLEANUP COMPLETE ===")
 
             try:
                 session.rollback()
