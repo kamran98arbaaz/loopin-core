@@ -30,8 +30,16 @@ function initializeSocketIO() {
 
         console.log('🔗 Connecting to Socket.IO at:', socketUrl);
 
-        socket = io(socketUrl, {
-            transports: ['websocket', 'polling'], // Try WebSocket first, fallback to polling
+        // Detect if running on Vercel (serverless environment)
+        const isVercel = host.includes('vercel.app') ||
+                        host.includes('now.sh') ||
+                        window.location.hostname.includes('vercel') ||
+                        document.querySelector('meta[name="generator"][content*="Vercel"]') !== null;
+
+        console.log('🌐 Deployment detected:', isVercel ? 'Vercel' : 'Other');
+
+        // Configure transports based on deployment
+        let socketConfig = {
             timeout: 30000, // Increased timeout for stability
             forceNew: true, // Force new connection to avoid stale connections
             reconnection: true,
@@ -43,10 +51,6 @@ function initializeSocketIO() {
             rejectUnauthorized: false,
             autoConnect: true,
             path: '/socket.io',
-            upgrade: true,
-            rememberUpgrade: true,
-            pingTimeout: 60000,
-            pingInterval: 25000,
             // Error recovery settings
             closeOnBeforeunload: false,
             retries: 3,
@@ -62,7 +66,31 @@ function initializeSocketIO() {
                 protocol: window.location.protocol,
                 host: window.location.host
             }
-        });
+        };
+
+        if (isVercel) {
+            // Vercel serverless: Use polling only (WebSocket not supported)
+            console.log('⚡ Using polling transport for Vercel deployment');
+            socketConfig.transports = ['polling'];
+            socketConfig.upgrade = false;
+            socketConfig.rememberUpgrade = false;
+            socketConfig.pingTimeout = 60000;
+            socketConfig.pingInterval = 25000;
+            // Additional polling-specific settings for Vercel
+            socketConfig.forceBase64 = true;
+            socketConfig.timestampRequests = true;
+            socketConfig.timestampParam = 't';
+        } else {
+            // Other deployments: Try WebSocket first, fallback to polling
+            console.log('🔄 Using WebSocket + polling fallback for standard deployment');
+            socketConfig.transports = ['websocket', 'polling'];
+            socketConfig.upgrade = true;
+            socketConfig.rememberUpgrade = true;
+            socketConfig.pingTimeout = 60000;
+            socketConfig.pingInterval = 25000;
+        }
+
+        socket = io(socketUrl, socketConfig);
         console.log('🔧 Socket.IO connection options set');
 
         // Attach all event handlers
@@ -611,7 +639,13 @@ function forcePollingFallback() {
     const host = window.location.host;
     const socketUrl = `${protocol}//${host}`;
 
-    socket = io(socketUrl, {
+    // Detect if running on Vercel
+    const isVercel = host.includes('vercel.app') ||
+                    host.includes('now.sh') ||
+                    window.location.hostname.includes('vercel') ||
+                    document.querySelector('meta[name="generator"][content*="Vercel"]') !== null;
+
+    let pollingConfig = {
         transports: ['polling'], // Force polling only as fallback
         timeout: 20000,
         forceNew: true,
@@ -621,20 +655,45 @@ function forcePollingFallback() {
         secure: window.location.protocol === 'https:',
         rejectUnauthorized: false,
         path: '/socket.io',
-        pingTimeout: 60000,
-        pingInterval: 25000,
         closeOnBeforeunload: false,
         autoConnect: true,
-        // Polling-specific settings
-        forceBase64: false,
-        timestampRequests: true,
-        timestampParam: 't',
-        // Railway-specific polling optimizations
-        extraHeaders: {
+        // Session management
+        auth: {
+            timestamp: Date.now(),
+            sessionId: sessionStorage.getItem('socketSessionId') || Date.now().toString(),
+            userAgent: navigator.userAgent.substring(0, 100),
+            protocol: window.location.protocol,
+            host: window.location.host
+        }
+    };
+
+    if (isVercel) {
+        // Vercel-specific polling settings
+        pollingConfig.pingTimeout = 60000;
+        pollingConfig.pingInterval = 25000;
+        pollingConfig.forceBase64 = true;
+        pollingConfig.timestampRequests = true;
+        pollingConfig.timestampParam = 't';
+        pollingConfig.extraHeaders = {
             'X-Requested-With': 'XMLHttpRequest',
             'Cache-Control': 'no-cache'
-        }
-    });
+        };
+        console.log('⚡ Using Vercel-optimized polling settings');
+    } else {
+        // Standard polling settings
+        pollingConfig.pingTimeout = 60000;
+        pollingConfig.pingInterval = 25000;
+        pollingConfig.forceBase64 = false;
+        pollingConfig.timestampRequests = true;
+        pollingConfig.timestampParam = 't';
+        pollingConfig.extraHeaders = {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Cache-Control': 'no-cache'
+        };
+        console.log('🔄 Using standard polling settings');
+    }
+
+    socket = io(socketUrl, pollingConfig);
 
     // Re-attach all event handlers
     attachSocketEventHandlers();
@@ -648,8 +707,16 @@ function attachSocketEventHandlers() {
         console.log('🔗 Connection details:', {
             connected: socket.connected,
             disconnected: socket.disconnected,
-            transport: socket.io.engine.transport.name
+            transport: socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown',
+            protocol: window.location.protocol,
+            host: window.location.host
         });
+
+        // Detect deployment type for logging
+        const host = window.location.host;
+        const isVercel = host.includes('vercel.app') || host.includes('now.sh') || window.location.hostname.includes('vercel');
+        console.log('🌐 Deployment context:', isVercel ? 'Vercel' : 'Other', '- Transport:', socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown');
+
         // Request initial unread count
         console.log('📊 Requesting initial unread count...');
         socket.emit('get_unread_count');
@@ -668,8 +735,20 @@ function attachSocketEventHandlers() {
         console.error('Error details:', {
             type: error.type,
             description: error.description,
-            context: error.context
+            context: error.context,
+            transport: socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown',
+            protocol: window.location.protocol,
+            host: window.location.host
         });
+
+        // Detect deployment type for better error context
+        const host = window.location.host;
+        const isVercel = host.includes('vercel.app') || host.includes('now.sh') || window.location.hostname.includes('vercel');
+        console.error('🌐 Deployment context:', isVercel ? 'Vercel' : 'Other', '- Error type:', error.type);
+
+        if (isVercel && error.type === 'TransportError') {
+            console.warn('⚠️ Vercel deployment detected with TransportError - this is expected for WebSocket attempts');
+        }
 
         // Show connection error toast (but don't spam)
         showConnectionErrorToast();

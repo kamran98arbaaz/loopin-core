@@ -2399,13 +2399,25 @@ def create_app(config_name=None):
     def backup_page():
         """Show database backup management page"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                logger.info("Vercel deployment detected - backup functionality disabled")
+                flash("⚠️ Backup functionality is not available on Vercel (read-only file system). Consider using database export features or cloud storage alternatives.", "warning")
+                return render_template("backup.html",
+                                      app_name=app.config["APP_NAME"],
+                                      backups=[],
+                                      backup_disabled=True,
+                                      is_vercel=True)
+
             logger.info("Loading backup page - importing backup system")
             from backup_system import DatabaseBackupSystem
 
             logger.info("Creating DatabaseBackupSystem instance")
             backup_system = DatabaseBackupSystem()
 
-            # Check if backup is enabled (handles Vercel read-only file system)
+            # Check if backup is enabled (handles other read-only file systems)
             if not hasattr(backup_system, 'backup_enabled') or not backup_system.backup_enabled:
                 logger.warning("Backup functionality is disabled")
                 flash("Backup functionality is not available on this deployment platform (read-only file system).", "warning")
@@ -2448,6 +2460,13 @@ def create_app(config_name=None):
     def create_backup():
         """Create a new database backup"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                flash("❌ Backup functionality is not available on Vercel (read-only file system). Consider using database export features or cloud storage alternatives.", "error")
+                return redirect(url_for('backup_page'))
+
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
 
@@ -2478,6 +2497,13 @@ def create_app(config_name=None):
     def download_backup(filename):
         """Download a backup file"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                flash("❌ Backup functionality is not available on Vercel (read-only file system).", "error")
+                return redirect(url_for('backup_page'))
+
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
 
@@ -2514,6 +2540,13 @@ def create_app(config_name=None):
     def restore_backup(filename):
         """Restore a backup file"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                flash("❌ Backup functionality is not available on Vercel (read-only file system).", "error")
+                return redirect(url_for('backup_page'))
+
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
 
@@ -2544,6 +2577,13 @@ def create_app(config_name=None):
     def delete_backup(filename):
         """Delete a backup file"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                flash("❌ Backup functionality is not available on Vercel (read-only file system).", "error")
+                return redirect(url_for('backup_page'))
+
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
 
@@ -2577,6 +2617,13 @@ def create_app(config_name=None):
     def cleanup_backups():
         """Clean up old backup files"""
         try:
+            # Check if running on Vercel (read-only file system)
+            is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
+
+            if is_vercel:
+                flash("❌ Backup functionality is not available on Vercel (read-only file system).", "error")
+                return redirect(url_for('backup_page'))
+
             from backup_system import DatabaseBackupSystem
             backup_system = DatabaseBackupSystem()
 
