@@ -1,5 +1,5 @@
 """
-Render-compatible backup system for LoopIn - No PostgreSQL client tools required
+Vercel-compatible backup system for LoopIn - No PostgreSQL client tools required
 """
 import os
 import json
@@ -25,8 +25,7 @@ class DatabaseBackupSystem:
         self.backup_dir.mkdir(exist_ok=True)
 
         # Environment detection
-        self.is_render = self._detect_render_environment()
-        self.is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
+        self.is_production = os.getenv("FLASK_ENV") == "production"
         self.is_development = os.getenv("FLASK_ENV") == "development" or not self.is_production
 
         # Load backup configuration
@@ -34,15 +33,8 @@ class DatabaseBackupSystem:
 
         # Log only in development or for important events
         if self.is_development:
-            print(f"[OK] Database backup system initialized for {'Render' if self.is_render else 'standard'} environment")
+            print(f"[OK] Database backup system initialized for {'production' if self.is_production else 'development'} environment")
 
-    def _detect_render_environment(self):
-        """Detect if we're running on Render"""
-        return (
-            "render" in self.database_url.lower() or
-            os.getenv("RENDER") is not None or
-            os.getenv("RENDER_SERVICE_ID") is not None
-        )
 
     def _load_backup_config(self):
         """Load backup configuration with environment-specific settings"""
@@ -62,14 +54,14 @@ class DatabaseBackupSystem:
             self.backup_retention_days = max(self.backup_retention_days, 7)  # Min 7 days in development
     
     def create_backup(self, backup_type="manual"):
-        """Create a database backup using SQL dump format (Railway-compatible)"""
+        """Create a database backup using SQL dump format (Vercel-compatible)"""
         try:
             timestamp = now_utc().strftime("%Y%m%d_%H%M%S")
             backup_filename = f"loopin_backup_{backup_type}_{timestamp}.sql"
             backup_path = self.backup_dir / backup_filename
 
             if self.is_development:
-                print(f"[BACKUP] Creating Render-compatible SQL backup: {backup_path}")
+                print(f"[BACKUP] Creating Vercel-compatible SQL backup: {backup_path}")
 
             # Create SQL dump file
             with open(backup_path, 'w', encoding='utf-8') as f:
@@ -79,7 +71,7 @@ class DatabaseBackupSystem:
                 f.write(f"-- Type: {backup_type}\n")
                 f.write(f"-- Environment: {'production' if self.is_production else 'development'}\n")
                 f.write(f"-- Version: 4.0 (PostgreSQL Format)\n")
-                f.write("-- Render Compatible: Yes\n\n")
+                f.write("-- Vercel Compatible: Yes\n\n")
 
                 # PostgreSQL doesn't need to disable foreign key checks like MySQL
                 # Foreign key constraints are automatically deferred in transactions
@@ -160,7 +152,7 @@ class DatabaseBackupSystem:
                     "format": "postgresql_sql_dump",
                     "database_url": self._mask_database_url(),
                     "total_records": total_records,
-                    "railway_compatible": True,
+                    "vercel_compatible": True,
                     "backup_version": "4.0",
                     "restore_instructions": "Execute the SQL file directly in PostgreSQL",
                     "environment": "production" if self.is_production else "development"
@@ -418,7 +410,7 @@ class DatabaseBackupSystem:
             print("[SUMMARY]:")
             print("   [OK] SQL backup executed")
             print("   [OK] Database tables restored")
-            print("   [OK] Render-compatible SQL format used")
+            print("   [OK] Vercel-compatible SQL format used")
 
             return True
 

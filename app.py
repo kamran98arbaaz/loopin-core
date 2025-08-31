@@ -122,14 +122,10 @@ def create_app(config_name=None):
     # Database configuration - ensure PostgreSQL is used consistently
     database_url = os.getenv('DATABASE_URL')
 
-    # On Render, DATABASE_URL should always be set from the database service
+    # For Vercel, DATABASE_URL should be set from environment variables
     if not database_url:
-        if os.getenv('RENDER'):
-            # If we're on Render but DATABASE_URL is not set, this is an error
-            raise RuntimeError("DATABASE_URL not set on Render - database service may not be properly configured")
-        else:
-            # For local development, use a default PostgreSQL URL
-            database_url = "postgresql://localhost/loopin_dev"
+        # For local development, use a default PostgreSQL URL
+        database_url = "postgresql://localhost/loopin_dev"
 
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -201,8 +197,8 @@ def create_app(config_name=None):
     # CORS configuration for Socket.IO
     app.config["CORS_HEADERS"] = "Content-Type"
 
-    # Secure session configuration - adjust for Render
-    is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
+    # Secure session configuration - adjust for Vercel
+    is_production = os.getenv("FLASK_ENV") == "production"
     if is_production:
         app.config["SESSION_COOKIE_SECURE"] = True  # Only send cookies over HTTPS
     else:
@@ -211,22 +207,10 @@ def create_app(config_name=None):
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # CSRF protection
     app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # Session timeout in seconds
 
-    # Render-specific configurations
-    if os.getenv("RENDER"):
-        app.config["SERVER_NAME"] = None  # Disable SERVER_NAME for Render
-        app.config["PREFERRED_URL_SCHEME"] = "https"  # Force HTTPS on Render
-
-        # Additional Render configurations for Socket.IO
-        app.config["RENDER_STATIC_URL"] = os.getenv("RENDER_EXTERNAL_URL", "")
-
-        # Log Render environment info (only in development)
-        if os.getenv("FLASK_ENV") == "development":
-            print(f"RENDER Environment: {os.getenv('RENDER')}")
-            print(f"RENDER Service ID: {os.getenv('RENDER_SERVICE_ID', 'Not set')}")
-            print(f"RENDER Service Name: {os.getenv('RENDER_SERVICE_NAME', 'Not set')}")
-            print(f"RENDER External URL: {os.getenv('RENDER_EXTERNAL_URL', 'Not set')}")
-            print(f"RENDER Git Commit: {os.getenv('RENDER_GIT_COMMIT', 'Not set')}")
-            print(f"RENDER Git Branch: {os.getenv('RENDER_GIT_BRANCH', 'Not set')}")
+    # Vercel-specific configurations
+    if is_production:
+        app.config["SERVER_NAME"] = None  # Disable SERVER_NAME for Vercel
+        app.config["PREFERRED_URL_SCHEME"] = "https"  # Force HTTPS on Vercel
 
     # Database configuration - DATABASE_URL should be set from the first configuration block
     database_url = app.config['SQLALCHEMY_DATABASE_URI']
@@ -236,21 +220,12 @@ def create_app(config_name=None):
     # Validate database type early in startup
     from database import validate_database_type
     if not validate_database_type():
-        if os.getenv("RENDER"):
-            logger.error("CRITICAL: Database type validation failed on Render")
-            raise RuntimeError("Database configuration error - check DATABASE_URL")
-        else:
-            logger.warning("Database type validation failed - using fallback configuration")
+        logger.warning("Database type validation failed - using fallback configuration")
 
     # Additional validation for SQLite detection
     parsed = urlparse(database_url)
     if parsed.scheme in ("sqlite", "sqlite3"):
-        if os.getenv("RENDER"):
-            logger.error("ERROR: SQLite detected on Render - this will cause lock issues!")
-            logger.error("Ensure DATABASE_URL is properly set to PostgreSQL in Render environment")
-            raise RuntimeError("SQLite database detected on Render - configure PostgreSQL instead")
-        else:
-            logger.warning("WARNING: Using SQLite in development - this may cause issues in production")
+        logger.warning("WARNING: Using SQLite - this may cause issues in production")
 
     parsed = urlparse(database_url)
     if parsed.scheme not in ("postgresql", "postgres", "sqlite", "sqlite3"):
@@ -259,16 +234,16 @@ def create_app(config_name=None):
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # Configure SSL for PostgreSQL with Render-specific defaults
+    # Configure SSL for PostgreSQL with Vercel-friendly defaults
     if parsed.scheme in ("postgresql", "postgres"):
         ssl_config = {}
 
-        # Set SSL mode with Render-friendly defaults
-        ssl_mode = os.getenv("PG_SSLMODE", "require")  # Default to 'require' for Render
+        # Set SSL mode with Vercel-friendly defaults
+        ssl_mode = os.getenv("PG_SSLMODE", "require")  # Default to 'require' for Vercel
         ssl_config["sslmode"] = ssl_mode
         logger.info(f"PostgreSQL SSL mode: {ssl_mode}")
 
-        # Render-specific SSL parameters
+        # Vercel-specific SSL parameters
         if os.getenv("PG_SSLROOTCERT"):
             ssl_config["sslrootcert"] = os.getenv("PG_SSLROOTCERT")
         if os.getenv("PG_SSLCERT"):
@@ -276,15 +251,15 @@ def create_app(config_name=None):
         if os.getenv("PG_SSLKEY"):
             ssl_config["sslkey"] = os.getenv("PG_SSLKEY")
 
-        # Set connection arguments for Render with optimized connection pooling
+        # Set connection arguments for Vercel with optimized connection pooling
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
             "connect_args": ssl_config,
-            # Optimized connection pool settings for production deployment
+            # Optimized connection pool settings for Vercel deployment
             "pool_pre_ping": True,
-            "pool_recycle": 600,  # Recycle connections every 10 minutes (increased from 300)
-            "pool_timeout": 30,   # Connection timeout (increased from 20)
-            "pool_size": 5,       # Base pool size (increased from 3)
-            "max_overflow": 10,   # Maximum overflow (increased from 5)
+            "pool_recycle": 300,  # Recycle connections every 5 minutes
+            "pool_timeout": 20,   # Connection timeout
+            "pool_size": 3,       # Base pool size for Vercel
+            "max_overflow": 5,    # Maximum overflow
             # Transaction isolation and connection stability
             "isolation_level": "READ_COMMITTED",  # Explicit isolation level
             "echo": False,  # Disable SQL echoing in production
@@ -300,7 +275,7 @@ def create_app(config_name=None):
             }
         }
 
-        logger.info(f"SQLAlchemy engine options configured for Render PostgreSQL with sync workers")
+        logger.info(f"SQLAlchemy engine options configured for Vercel PostgreSQL")
     else:
         # Non-PostgreSQL databases use optimized settings
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
@@ -2497,31 +2472,24 @@ def create_app(config_name=None):
 
         # Socket.IO CORS is handled by the Socket.IO extension, don't override here
 
-        # Add Render-specific headers (only essential ones in production)
-        if os.getenv('RENDER'):
-            is_production = os.getenv("RENDER") == "true" or os.getenv("FLASK_ENV") == "production"
-            is_development = os.getenv("FLASK_ENV") == "development" or not is_production
+        # Add Vercel-specific headers (only essential ones in production)
+        is_production = os.getenv("FLASK_ENV") == "production"
+        is_development = os.getenv("FLASK_ENV") == "development" or not is_production
 
-            # Essential headers for all environments
-            response.headers['X-Render-Environment'] = os.getenv('RENDER')
-            response.headers['X-SocketIO-Support'] = 'enabled'
-            response.headers['X-WebSocket-Support'] = 'enabled'
-            response.headers['X-Transport-Support'] = 'websocket,polling'
-            response.headers['X-Server-Version'] = 'LoopIn-v1.0'
+        # Essential headers for all environments
+        response.headers['X-SocketIO-Support'] = 'enabled'
+        response.headers['X-WebSocket-Support'] = 'enabled'
+        response.headers['X-Transport-Support'] = 'websocket,polling'
+        response.headers['X-Server-Version'] = 'LoopIn-v1.0'
 
-            # Add debug headers only in development
-            if is_development:
-                response.headers['X-Render-Service-ID'] = os.getenv('RENDER_SERVICE_ID', '')
-                response.headers['X-Render-Service-Name'] = os.getenv('RENDER_SERVICE_NAME', '')
-                response.headers['X-Render-External-URL'] = os.getenv('RENDER_EXTERNAL_URL', '')
-                response.headers['X-Render-Git-Commit'] = os.getenv('RENDER_GIT_COMMIT', '')
-                response.headers['X-Render-Git-Branch'] = os.getenv('RENDER_GIT_BRANCH', '')
-                response.headers['X-Debug-Mode'] = str(debug_mode).lower()
-                response.headers['X-Timestamp'] = now_utc().isoformat()
-                response.headers['X-Status'] = 'healthy'
-                response.headers['X-Connection-Status'] = 'ready'
-                response.headers['X-SocketIO-Version'] = '4.7.2'
-                response.headers['X-Debug-Info'] = 'Socket.IO debugging enabled'
+        # Add debug headers only in development
+        if is_development:
+            response.headers['X-Debug-Mode'] = 'true'
+            response.headers['X-Timestamp'] = now_utc().isoformat()
+            response.headers['X-Status'] = 'healthy'
+            response.headers['X-Connection-Status'] = 'ready'
+            response.headers['X-SocketIO-Version'] = '4.7.2'
+            response.headers['X-Debug-Info'] = 'Socket.IO debugging enabled'
 
         return response
 
@@ -2595,84 +2563,6 @@ def create_app(config_name=None):
 # Create the Flask app instance for gunicorn
 app = create_app()
 
-if __name__ == "__main__":
-    # Create app instance for gunicorn or direct execution
-    app = create_app()
-    port = int(os.getenv("PORT", 8000))
-    # Set debug based on environment variable
-    debug_mode = os.getenv("FLASK_DEBUG", "False").lower() == "true"
-
-    if os.getenv("FLASK_ENV") == "development":
-        print("🚀 Starting LoopIn server...")
-        print(f"🔌 Socket.IO configured for port {port}")
-        print(f"🌐 Server will be available at: http://0.0.0.0:{port}")
-        print(f"🔧 Debug mode: {debug_mode}")
-
-    try:
-        # Use socketio.run for proper Socket.IO server startup
-        if os.getenv("FLASK_ENV") == "development":
-            print("🚀 Starting Socket.IO server...")
-        # Configure Socket.IO with proper CORS and WebSocket settings
-        socketio.run(
-            app,
-            host="0.0.0.0",
-            port=port,
-            debug=debug_mode,
-            log_output=debug_mode,
-            use_reloader=debug_mode,
-            # Additional Socket.IO server options for Railway compatibility
-            keyfile=None,
-            certfile=None,
-            cors_allowed_origins=[
-                "https://loopin-home-production.up.railway.app",
-                "https://loopin-core.onrender.com",
-                "https://*.up.railway.app",
-                "https://*.onrender.com",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-                "http://localhost:5000",
-                "http://127.0.0.1:5000"
-            ] if os.getenv("RENDER") else "*",
-            server_options={
-                'ping_timeout': 30,  # Reduced for faster disconnect detection
-                'ping_interval': 15,  # More frequent health checks
-                'max_http_buffer_size': 500000,  # Reduced for memory efficiency
-                'allow_upgrades': True,
-                'transports': ['websocket', 'polling'],  # Prefer WebSocket first
-                'upgrade_timeout': 5000,  # Faster upgrade timeout
-                'close_timeout': 30,  # Faster close timeout
-                'heartbeat_interval': 15,  # More frequent heartbeats
-                'heartbeat_timeout': 30,  # Faster heartbeat timeout
-                'max_connections': 1000,
-                'compression': True,
-                'compression_threshold': 512,  # Compress smaller messages
-                # Performance optimizations
-                'handle_sigint': True,
-                'always_connect': False,
-                'jsonp': False,
-                'cookie': None,
-                'connect_timeout': 10,  # Connection timeout
-                'client_manager_mode': 'threading',  # Use threading for better performance
-            }
-        )
-    except Exception as e:
-        logger.error(f"Failed to start Socket.IO server: {e}")
-        if os.getenv("FLASK_ENV") == "development":
-            print(f"❌ Failed to start Socket.IO server: {e}")
-            import traceback
-            print(f"❌ Full Socket.IO error: {traceback.format_exc()}")
-
-        # Fallback to regular Flask app if Socket.IO fails
-        if os.getenv("FLASK_ENV") == "development":
-            print("🔄 Falling back to regular Flask app...")
-
-        try:
-            app.run(host="0.0.0.0", port=port, debug=debug_mode)
-        except Exception as fallback_error:
-            logger.error(f"Even fallback failed: {fallback_error}")
-            if os.getenv("FLASK_ENV") == "development":
-                print(f"❌ Even fallback failed: {fallback_error}")
-            # Don't raise the exception to prevent worker crash
-            # Instead, log the error and exit gracefully
-            import sys
-            sys.exit(1)
+# Vercel serverless function entry point
+# The app instance is created at module level for Vercel
+# Vercel handles the server execution automatically

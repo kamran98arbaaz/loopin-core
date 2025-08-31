@@ -167,32 +167,32 @@ def test_database_connection():
         print(f"ERROR Database connection test failed: {e}")
         return False
 
-def check_render_environment():
-    """Check Render-specific configuration"""
-    print("\nChecking Render environment...")
+def check_deployment_environment():
+    """Check deployment environment configuration"""
+    print("\nChecking deployment environment...")
 
-    is_render = os.getenv("RENDER")
-    if is_render:
-        print("OK Running on Render")
+    is_production = os.getenv("FLASK_ENV") == "production"
+    if is_production:
+        print("OK Running in production environment")
 
-        # Check Render-specific variables
-        render_vars = ['RENDER_SERVICE_ID', 'RENDER_EXTERNAL_URL']
-        for var in render_vars:
+        # Check production-specific variables
+        prod_vars = ['DATABASE_URL']
+        for var in prod_vars:
             value = os.getenv(var)
             if value:
-                print(f"OK {var}: {value}")
+                print(f"OK {var}: Set")
             else:
                 print(f"WARNING {var}: Not set")
 
-        # Ensure we're not using SQLite on Render
+        # Ensure we're not using SQLite in production
         database_url = os.getenv("DATABASE_URL", "")
         if database_url.startswith('sqlite'):
-            print("CRITICAL: SQLite database configured on Render!")
+            print("CRITICAL: SQLite database configured in production!")
             print("   This will definitely cause lock errors")
             return False
 
     else:
-        print("INFO: Not running on Render (development/local environment)")
+        print("INFO: Running in development/local environment")
 
     return True
 
@@ -206,7 +206,7 @@ def main():
         ("DATABASE_URL Validation", validate_database_url),
         ("Configuration Files", check_config_files),
         ("Database Connection", test_database_connection),
-        ("Render Environment", check_render_environment),
+        ("Deployment Environment", check_deployment_environment),
     ]
 
     results = []
@@ -245,7 +245,7 @@ def main():
         print("\nCommon fixes:")
         print("- Ensure DATABASE_URL points to PostgreSQL (not SQLite)")
         print("- Check that all required environment variables are set")
-        print("- Verify Render database service is properly configured")
+        print("- Verify database service is properly configured")
         return 1
 
 if __name__ == "__main__":

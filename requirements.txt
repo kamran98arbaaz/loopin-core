@@ -1,46 +1,28 @@
-# Core Flask dependencies (light version for Render free tier)
 Flask==2.3.3
 Flask-Login==0.6.3
 Flask-Migrate==4.1.0
 Flask-SocketIO==5.3.6
 Flask-SQLAlchemy==3.1.1
-
-# Database (minimal)
 psycopg2-binary==2.9.10
 SQLAlchemy==2.0.42
 alembic==1.16.4
-
-# Web server for production (Render-optimized)
-gunicorn==21.2.0
-
-# Essential utilities (minimal)
 python-dotenv==1.1.1
 pytz==2025.2
 requests==2.32.4
-
-# Socket.IO for real-time features (compatible with client v4.7.2)
 python-socketio==5.10.0
 python-engineio==4.8.0
 eventlet==0.33.3
-
-# Core Python utilities (let pip resolve these)
 Werkzeug==2.3.7
 Jinja2==3.1.4
 MarkupSafe==2.1.5
 itsdangerous==2.2.0
 click==8.1.7
-
-# HTTP libraries (let pip resolve these)
 urllib3==2.2.3
 certifi==2024.8.30
 charset-normalizer==3.4.0
 idna==3.10
-
-# Date/time handling
 python-dateutil==2.9.0.post0
 six==1.16.0
-
-# Additional utilities
 greenlet==3.1.1
 typing_extensions==4.12.2
 psutil==6.0.0
