@@ -1,14 +1,12 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
+  "functions": {
+    "api/index.py": {
+      "runtime": "@vercel/python",
+      "maxDuration": 30,
+      "maxLambdaSize": "50mb"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/(.*)",
@@ -19,10 +17,5 @@
     "FLASK_ENV": "production",
     "FLASK_APP": "app.py",
     "PYTHONPATH": "."
-  },
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 30
-    }
   }
 }
