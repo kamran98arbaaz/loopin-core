@@ -2403,8 +2403,8 @@ def create_app(config_name=None):
             is_vercel = os.getenv("VERCEL") == "1" or os.getenv("VERCEL_ENV") is not None
 
             if is_vercel:
-                logger.info("Vercel deployment detected - backup functionality disabled")
-                flash("⚠️ Backup functionality is not available on Vercel (read-only file system). Consider using database export features or cloud storage alternatives.", "warning")
+                logger.info("Vercel deployment detected - showing export options")
+                flash("⚠️ File-based backups are not available on Vercel. Use the export options below to download your data.", "info")
                 return render_template("backup.html",
                                       app_name=app.config["APP_NAME"],
                                       backups=[],
@@ -2424,7 +2424,8 @@ def create_app(config_name=None):
                 return render_template("backup.html",
                                       app_name=app.config["APP_NAME"],
                                       backups=[],
-                                      backup_disabled=True)
+                                      backup_disabled=True,
+                                      is_vercel=False)
 
             logger.info("Listing backups")
             backups = backup_system.list_backups()
@@ -2433,7 +2434,8 @@ def create_app(config_name=None):
             return render_template("backup.html",
                                   app_name=app.config["APP_NAME"],
                                   backups=backups,
-                                  backup_disabled=False)
+                                  backup_disabled=False,
+                                  is_vercel=False)
         except ImportError as e:
             logger.error(f"Failed to import backup system: {e}")
             flash("Backup system module not found. Please check if backup_system.py exists.", "error")
@@ -2642,6 +2644,292 @@ def create_app(config_name=None):
             flash("Error cleaning up backup files.", "error")
 
         return redirect(url_for('backup_page'))
+
+    @app.route("/export/database/<format>")
+    @admin_required
+    @performance_logger
+    def export_database(format):
+        """Export database data in JSON or CSV format for Vercel compatibility"""
+        try:
+            # Validate format
+            if format not in ['json', 'csv']:
+                flash("❌ Invalid export format. Use 'json' or 'csv'.", "error")
+                return redirect(url_for('backup_page'))
+
+            # Log the export attempt
+            log_activity('export', 'database', 'system', f'Database export in {format.upper()} format')
+
+            if format == 'json':
+                return export_database_json()
+            else:
+                return export_database_csv()
+
+        except Exception as e:
+            logger.error(f"Error exporting database: {e}")
+            flash(f"❌ Error exporting database: {str(e)}", "error")
+            return redirect(url_for('backup_page'))
+
+    def export_database_json():
+        """Export database as JSON"""
+        try:
+            from io import BytesIO
+            import json
+            from datetime import datetime
+
+            # Collect all data
+            export_data = {
+                "metadata": {
+                    "export_timestamp": now_utc().isoformat(),
+                    "format": "json",
+                    "version": "1.0",
+                    "app_name": current_app.config.get("APP_NAME", "LoopIn")
+                },
+                "data": {}
+            }
+
+            # Export users
+            users = User.query.all()
+            export_data["data"]["users"] = [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "display_name": user.display_name,
+                    "email": user.email,
+                    "role": user.role,
+                    "created_at": user.created_at.isoformat() if user.created_at else None
+                } for user in users
+            ]
+
+            # Export updates
+            updates = Update.query.all()
+            export_data["data"]["updates"] = [
+                {
+                    "id": update.id,
+                    "name": update.name,
+                    "process": update.process,
+                    "message": update.message,
+                    "timestamp": update.timestamp.isoformat()
+                } for update in updates
+            ]
+
+            # Export read logs
+            read_logs = ReadLog.query.all()
+            export_data["data"]["read_logs"] = [
+                {
+                    "id": log.id,
+                    "update_id": log.update_id,
+                    "user_id": log.user_id,
+                    "guest_name": log.guest_name,
+                    "timestamp": log.timestamp.isoformat(),
+                    "ip_address": log.ip_address,
+                    "user_agent": log.user_agent
+                } for log in read_logs
+            ]
+
+            # Export SOP summaries
+            sops = SOPSummary.query.all()
+            export_data["data"]["sop_summaries"] = [
+                {
+                    "id": sop.id,
+                    "title": sop.title,
+                    "summary_text": sop.summary_text,
+                    "department": sop.department,
+                    "tags": sop.tags,
+                    "created_at": sop.created_at.isoformat()
+                } for sop in sops
+            ]
+
+            # Export lessons learned
+            lessons = LessonLearned.query.all()
+            export_data["data"]["lessons_learned"] = [
+                {
+                    "id": lesson.id,
+                    "title": lesson.title,
+                    "content": lesson.content,
+                    "summary": lesson.summary,
+                    "author": lesson.author,
+                    "department": lesson.department,
+                    "tags": lesson.tags,
+                    "created_at": lesson.created_at.isoformat()
+                } for lesson in lessons
+            ]
+
+            # Export activity logs (limit to recent for performance)
+            activities = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(1000).all()
+            export_data["data"]["activity_logs"] = [
+                {
+                    "id": activity.id,
+                    "user_id": activity.user_id,
+                    "action": activity.action,
+                    "entity_type": activity.entity_type,
+                    "entity_id": activity.entity_id,
+                    "entity_title": activity.entity_title,
+                    "timestamp": activity.timestamp.isoformat(),
+                    "ip_address": activity.ip_address,
+                    "user_agent": activity.user_agent,
+                    "details": activity.details
+                } for activity in activities
+            ]
+
+            # Convert to JSON string
+            json_data = json.dumps(export_data, indent=2, ensure_ascii=False)
+
+            # Create response
+            timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
+            response = Response(
+                json_data,
+                mimetype='application/json',
+                headers={
+                    'Content-Disposition': f'attachment; filename=loopin_export_{timestamp_str}.json',
+                    'Cache-Control': 'no-cache'
+                }
+            )
+
+            flash("✅ Database exported successfully as JSON.", "success")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error creating JSON export: {e}")
+            raise
+
+    def export_database_csv():
+        """Export database as CSV files in a ZIP archive"""
+        try:
+            from io import BytesIO, StringIO
+            import zipfile
+            import csv
+
+            # Create ZIP file in memory
+            zip_buffer = BytesIO()
+
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Export users
+                users = User.query.all()
+                if users:
+                    user_output = StringIO()
+                    writer = csv.writer(user_output)
+                    writer.writerow(['ID', 'Username', 'Display Name', 'Email', 'Role', 'Created At'])
+                    for user in users:
+                        writer.writerow([
+                            user.id,
+                            user.username,
+                            user.display_name,
+                            user.email,
+                            user.role,
+                            user.created_at.isoformat() if user.created_at else ''
+                        ])
+                    zip_file.writestr('users.csv', user_output.getvalue())
+
+                # Export updates
+                updates = Update.query.all()
+                if updates:
+                    update_output = StringIO()
+                    writer = csv.writer(update_output)
+                    writer.writerow(['ID', 'Name', 'Process', 'Message', 'Timestamp'])
+                    for update in updates:
+                        writer.writerow([
+                            update.id,
+                            update.name,
+                            update.process,
+                            update.message,
+                            update.timestamp.isoformat()
+                        ])
+                    zip_file.writestr('updates.csv', update_output.getvalue())
+
+                # Export read logs
+                read_logs = ReadLog.query.all()
+                if read_logs:
+                    read_log_output = StringIO()
+                    writer = csv.writer(read_log_output)
+                    writer.writerow(['ID', 'Update ID', 'User ID', 'Guest Name', 'Timestamp', 'IP Address', 'User Agent'])
+                    for log in read_logs:
+                        writer.writerow([
+                            log.id,
+                            log.update_id,
+                            log.user_id,
+                            log.guest_name,
+                            log.timestamp.isoformat(),
+                            log.ip_address,
+                            log.user_agent
+                        ])
+                    zip_file.writestr('read_logs.csv', read_log_output.getvalue())
+
+                # Export SOP summaries
+                sops = SOPSummary.query.all()
+                if sops:
+                    sop_output = StringIO()
+                    writer = csv.writer(sop_output)
+                    writer.writerow(['ID', 'Title', 'Summary Text', 'Department', 'Tags', 'Created At'])
+                    for sop in sops:
+                        writer.writerow([
+                            sop.id,
+                            sop.title,
+                            sop.summary_text,
+                            sop.department,
+                            ','.join(sop.tags) if sop.tags else '',
+                            sop.created_at.isoformat()
+                        ])
+                    zip_file.writestr('sop_summaries.csv', sop_output.getvalue())
+
+                # Export lessons learned
+                lessons = LessonLearned.query.all()
+                if lessons:
+                    lesson_output = StringIO()
+                    writer = csv.writer(lesson_output)
+                    writer.writerow(['ID', 'Title', 'Content', 'Summary', 'Author', 'Department', 'Tags', 'Created At'])
+                    for lesson in lessons:
+                        writer.writerow([
+                            lesson.id,
+                            lesson.title,
+                            lesson.content,
+                            lesson.summary,
+                            lesson.author,
+                            lesson.department,
+                            ','.join(lesson.tags) if lesson.tags else '',
+                            lesson.created_at.isoformat()
+                        ])
+                    zip_file.writestr('lessons_learned.csv', lesson_output.getvalue())
+
+                # Export activity logs (limit to recent for performance)
+                activities = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(1000).all()
+                if activities:
+                    activity_output = StringIO()
+                    writer = csv.writer(activity_output)
+                    writer.writerow(['ID', 'User ID', 'Action', 'Entity Type', 'Entity ID', 'Entity Title', 'Timestamp', 'IP Address', 'User Agent', 'Details'])
+                    for activity in activities:
+                        writer.writerow([
+                            activity.id,
+                            activity.user_id,
+                            activity.action,
+                            activity.entity_type,
+                            activity.entity_id,
+                            activity.entity_title,
+                            activity.timestamp.isoformat(),
+                            activity.ip_address,
+                            activity.user_agent,
+                            activity.details
+                        ])
+                    zip_file.writestr('activity_logs.csv', activity_output.getvalue())
+
+            zip_buffer.seek(0)
+
+            # Create response
+            timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
+            response = Response(
+                zip_buffer.getvalue(),
+                mimetype='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename=loopin_export_{timestamp_str}.zip',
+                    'Cache-Control': 'no-cache'
+                }
+            )
+
+            flash("✅ Database exported successfully as CSV files in ZIP archive.", "success")
+            return response
+
+        except Exception as e:
+            logger.error(f"Error creating CSV export: {e}")
+            raise
 
     # Archive Management Routes
     @app.route("/archives")

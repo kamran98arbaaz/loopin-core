@@ -15,66 +15,113 @@
   <!-- Backup Actions -->
   <div class="backup-actions-card">
     <h2>🛡️ Backup Actions</h2>
-    
+
     <div class="action-grid">
-      <!-- Create Backup -->
-      <div class="action-item">
-        <div class="action-icon">
-          <i class="fas fa-plus-circle"></i>
+      {% if backup_disabled and is_vercel %}
+        <!-- Database Export for Vercel -->
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-file-export"></i>
+          </div>
+          <div class="action-content">
+            <h3>Export Database (JSON)</h3>
+            <p>Download complete database as JSON file - works on Vercel</p>
+            <a href="{{ url_for('export_database', format='json') }}" class="btn btn-primary">
+              <i class="fas fa-download"></i>
+              Export as JSON
+            </a>
+          </div>
         </div>
-        <div class="action-content">
-          <h3>Create New Backup</h3>
-          <p>Generate a complete database backup with current data</p>
-          <form method="POST" action="{{ url_for('create_backup') }}" class="backup-form">
-            <div class="backup-form-group">
-              <select name="backup_type" class="backup-type-select">
-                <option value="manual">Manual Backup</option>
-                <option value="daily">Daily Backup</option>
-                <option value="weekly">Weekly Backup</option>
-                <option value="monthly">Monthly Backup</option>
-              </select>
-            </div>
-            <div class="backup-form-group">
-              <button type="submit" class="btn btn-primary" onclick="return confirm('Create database backup now?')">
-                <i class="fas fa-download"></i>
-                Create Backup
+
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-table"></i>
+          </div>
+          <div class="action-content">
+            <h3>Export Database (CSV)</h3>
+            <p>Download database tables as CSV files in ZIP archive</p>
+            <a href="{{ url_for('export_database', format='csv') }}" class="btn btn-success">
+              <i class="fas fa-download"></i>
+              Export as CSV
+            </a>
+          </div>
+        </div>
+
+        <!-- View Archives -->
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-archive"></i>
+          </div>
+          <div class="action-content">
+            <h3>View Archived Items</h3>
+            <p>View and restore deleted updates, SOPs, and lessons</p>
+            <a href="{{ url_for('archives_page') }}" class="btn btn-info">
+              <i class="fas fa-eye"></i>
+              View Archives
+            </a>
+          </div>
+        </div>
+      {% else %}
+        <!-- Standard Backup Actions for Local/Other Deployments -->
+        <!-- Create Backup -->
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-plus-circle"></i>
+          </div>
+          <div class="action-content">
+            <h3>Create New Backup</h3>
+            <p>Generate a complete database backup with current data</p>
+            <form method="POST" action="{{ url_for('create_backup') }}" class="backup-form">
+              <div class="backup-form-group">
+                <select name="backup_type" class="backup-type-select">
+                  <option value="manual">Manual Backup</option>
+                  <option value="daily">Daily Backup</option>
+                  <option value="weekly">Weekly Backup</option>
+                  <option value="monthly">Monthly Backup</option>
+                </select>
+              </div>
+              <div class="backup-form-group">
+                <button type="submit" class="btn btn-primary" onclick="return confirm('Create database backup now?')">
+                  <i class="fas fa-download"></i>
+                  Create Backup
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Cleanup Backups -->
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-broom"></i>
+          </div>
+          <div class="action-content">
+            <h3>Cleanup Old Backups</h3>
+            <p>Remove old backups based on retention policy</p>
+            <form method="POST" action="{{ url_for('cleanup_backups') }}" class="inline-form">
+              <button type="submit" class="btn btn-secondary" onclick="return confirm('Remove old backups according to retention policy?')">
+                <i class="fas fa-trash-alt"></i>
+                Cleanup Backups
               </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
-      </div>
 
-      <!-- Cleanup Backups -->
-      <div class="action-item">
-        <div class="action-icon">
-          <i class="fas fa-broom"></i>
+        <!-- View Archives -->
+        <div class="action-item">
+          <div class="action-icon">
+            <i class="fas fa-archive"></i>
+          </div>
+          <div class="action-content">
+            <h3>View Archived Items</h3>
+            <p>View and restore deleted updates, SOPs, and lessons</p>
+            <a href="{{ url_for('archives_page') }}" class="btn btn-info">
+              <i class="fas fa-eye"></i>
+              View Archives
+            </a>
+          </div>
         </div>
-        <div class="action-content">
-          <h3>Cleanup Old Backups</h3>
-          <p>Remove old backups based on retention policy</p>
-          <form method="POST" action="{{ url_for('cleanup_backups') }}" class="inline-form">
-            <button type="submit" class="btn btn-secondary" onclick="return confirm('Remove old backups according to retention policy?')">
-              <i class="fas fa-trash-alt"></i>
-              Cleanup Backups
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <!-- View Archives -->
-      <div class="action-item">
-        <div class="action-icon">
-          <i class="fas fa-archive"></i>
-        </div>
-        <div class="action-content">
-          <h3>View Archived Items</h3>
-          <p>View and restore deleted updates, SOPs, and lessons</p>
-          <a href="{{ url_for('archives_page') }}" class="btn btn-info">
-            <i class="fas fa-eye"></i>
-            View Archives
-          </a>
-        </div>
-      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -155,37 +202,70 @@
 
   <!-- Backup Information -->
   <div class="backup-info-card">
-    <h2>ℹ️ Backup Information</h2>
-    
+    <h2>ℹ️ {% if backup_disabled and is_vercel %}Export Information{% else %}Backup Information{% endif %}</h2>
+
     <div class="info-grid">
-      <div class="info-item">
-        <h4>Retention Policy</h4>
-        <ul>
-          <li>Daily backups: Keep last 7 days</li>
-          <li>Weekly backups: Keep last 4 weeks</li>
-          <li>Monthly backups: Keep last 12 months</li>
-        </ul>
-      </div>
-      
-      <div class="info-item">
-        <h4>Backup Contents</h4>
-        <ul>
-          <li>All user accounts and roles</li>
-          <li>Updates and read logs</li>
-          <li>SOP summaries and lessons learned</li>
-          <li>Database schema and constraints</li>
-        </ul>
-      </div>
-      
-      <div class="info-item">
-        <h4>Safety Notes</h4>
-        <ul>
-          <li>Backups are verified before restore</li>
-          <li>Restore operations replace all data</li>
-          <li>Create a backup before restoring</li>
-          <li>Only admins can manage backups</li>
-        </ul>
-      </div>
+      {% if backup_disabled and is_vercel %}
+        <div class="info-item">
+          <h4>Export Formats</h4>
+          <ul>
+            <li><strong>JSON Export:</strong> Complete database as single file</li>
+            <li><strong>CSV Export:</strong> Tables as separate CSV files in ZIP</li>
+            <li><strong>Vercel Compatible:</strong> No file system writes required</li>
+          </ul>
+        </div>
+
+        <div class="info-item">
+          <h4>Export Contents</h4>
+          <ul>
+            <li>All user accounts and roles</li>
+            <li>Updates and read logs</li>
+            <li>SOP summaries and lessons learned</li>
+            <li>Recent activity logs (last 1000)</li>
+            <li>Export metadata and timestamps</li>
+          </ul>
+        </div>
+
+        <div class="info-item">
+          <h4>Vercel Benefits</h4>
+          <ul>
+            <li>Works with read-only file system</li>
+            <li>Direct download to your browser</li>
+            <li>No external storage required</li>
+            <li>Secure and immediate access</li>
+            <li>Compatible with all browsers</li>
+          </ul>
+        </div>
+      {% else %}
+        <div class="info-item">
+          <h4>Retention Policy</h4>
+          <ul>
+            <li>Daily backups: Keep last 7 days</li>
+            <li>Weekly backups: Keep last 4 weeks</li>
+            <li>Monthly backups: Keep last 12 months</li>
+          </ul>
+        </div>
+
+        <div class="info-item">
+          <h4>Backup Contents</h4>
+          <ul>
+            <li>All user accounts and roles</li>
+            <li>Updates and read logs</li>
+            <li>SOP summaries and lessons learned</li>
+            <li>Database schema and constraints</li>
+          </ul>
+        </div>
+
+        <div class="info-item">
+          <h4>Safety Notes</h4>
+          <ul>
+            <li>Backups are verified before restore</li>
+            <li>Restore operations replace all data</li>
+            <li>Create a backup before restoring</li>
+            <li>Only admins can manage backups</li>
+          </ul>
+        </div>
+      {% endif %}
     </div>
   </div>
 
