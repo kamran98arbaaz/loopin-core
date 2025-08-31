@@ -10,19 +10,18 @@ from sqlalchemy import Text
 import json
 from timezone_utils import UTC, IST, now_utc, to_ist, format_ist
 
-# Database-agnostic ARRAY type that only works with PostgreSQL
+# Database-agnostic ARRAY type that works with PostgreSQL and SQLite
 class DatabaseAgnosticArray(db.TypeDecorator):
     impl = Text
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
-        # Only support PostgreSQL - raise error for other databases
         if dialect.name == 'postgresql':
+            from sqlalchemy.dialects.postgresql import ARRAY
             return dialect.type_descriptor(ARRAY(db.String))
         else:
-            # Force PostgreSQL usage by raising an error for non-PostgreSQL databases
-            raise RuntimeError(f"DatabaseAgnosticArray only supports PostgreSQL. Detected: {dialect.name}. "
-                             "Please ensure DATABASE_URL points to PostgreSQL.")
+            # For SQLite and other databases, use Text and handle serialization manually
+            return dialect.type_descriptor(Text)
 
     def process_bind_param(self, value, dialect):
         if value is None:
@@ -30,8 +29,9 @@ class DatabaseAgnosticArray(db.TypeDecorator):
         if dialect.name == 'postgresql':
             return value
         else:
-            # This should never be reached due to the check in load_dialect_impl
-            raise RuntimeError("DatabaseAgnosticArray requires PostgreSQL")
+            # For SQLite, serialize the array as JSON
+            import json
+            return json.dumps(value)
 
     def process_result_value(self, value, dialect):
         if value is None:
@@ -39,8 +39,13 @@ class DatabaseAgnosticArray(db.TypeDecorator):
         if dialect.name == 'postgresql':
             return value
         else:
-            # This should never be reached due to the check in load_dialect_impl
-            raise RuntimeError("DatabaseAgnosticArray requires PostgreSQL")
+            # For SQLite, deserialize the JSON back to array
+            import json
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                # If JSON parsing fails, return empty list
+                return []
 
 
 class Update(db.Model):

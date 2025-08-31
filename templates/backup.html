@@ -117,8 +117,7 @@
                 {% endif %}
               </td>
               <td class="backup-actions">
-                <form method="POST" action="{{ url_for('restore_backup') }}" class="inline-form">
-                  <input type="hidden" name="backup_file" value="{{ backup.filename }}">
+                <form method="POST" action="{{ url_for('restore_backup', filename=backup.filename) }}" class="inline-form">
                   <button type="submit" class="btn btn-warning btn-small"
                           onclick="return confirm('⚠️ WARNING: This will replace all current data with the backup data. Are you sure you want to restore from this backup?')">
                     <i class="fas fa-undo"></i>

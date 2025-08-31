@@ -13,6 +13,7 @@ def init_socketio(socketio_instance, app):
     """Initialize Socket.IO with basic settings for light version"""
     global _socketio
     _socketio = socketio_instance
+    print("Initializing Socket.IO...")
 
     # Ensure server options are properly configured
     if hasattr(socketio_instance, 'server_options'):
@@ -127,18 +128,40 @@ def broadcast_update(update_data, process=None):
     """Broadcast an update to all connected clients - optimized for performance"""
     try:
         if not _socketio:
-            return
+            print("SocketIO not initialized")
+            return False
 
-        # Use emit with skip_sid to avoid sending to sender (if available)
-        # Emit to general updates room
-        _socketio.emit('new_update', update_data, room='updates', namespace='/', skip_sid=None)
+        # Add timestamp and ensure data format
+        if isinstance(update_data, dict):
+            if 'timestamp' not in update_data:
+                update_data['timestamp'] = datetime.now(timezone.utc).isoformat()
+        else:
+            print(f"Invalid update_data format: {type(update_data)}")
+            return False
 
-        # Emit to process-specific room if specified - only if different from general room
+        # Log the broadcast attempt
+        print(f"Broadcasting update: {update_data.get('message', '')[:50]}...")
+
+        # Broadcast to all connected clients
+        socketio.emit('new_update', update_data, broadcast=True, namespace='/')
+        print("Broadcast to all clients successful")
+
+        # Also emit to the 'updates' room for clients specifically in that room
+        socketio.emit('new_update', update_data, room='updates', namespace='/')
+        print("Sent to updates room")
+
+        # Emit to process-specific room if specified
         if process:
             process_room = f'process_{process}'
-            # Avoid duplicate emission if process room is the same as general updates
-            if process_room != 'updates':
-                _socketio.emit('new_update', update_data, room=process_room, namespace='/', skip_sid=None)
+            socketio.emit('new_update', update_data, room=process_room, namespace='/')
+            print(f"Sent to process room: {process_room}")
+
+        print("All broadcasts completed")
+        return True
+
+    except Exception as e:
+        print(f"Broadcast error: {str(e)}")
+        return False
 
     except Exception as e:
         # Silent error handling for light version
