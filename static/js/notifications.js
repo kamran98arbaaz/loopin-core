@@ -742,6 +742,16 @@ function attachSocketEventHandlers() {
         showToast(`ℹ️ ${data.message}`);
     });
 
+    // Handle read count updates from mark_as_read
+    socket.on('read_count_updated', function(data) {
+        console.log('📊 Read count updated:', data);
+        // Update the read count display if there's an element to update
+        const readCountElement = document.querySelector(`[data-update-id="${data.update_id}"] .read-count`);
+        if (readCountElement) {
+            readCountElement.textContent = `📖 ${data.read_count} reads`;
+        }
+    });
+
     // Subscribe to updates
     console.log('📡 Subscribing to real-time updates...');
     socket.emit('subscribe_to_updates');

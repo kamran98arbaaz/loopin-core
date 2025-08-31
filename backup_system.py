@@ -269,20 +269,42 @@ class DatabaseBackupSystem:
             for backup_file in self.backup_dir.glob("*.json"):
                 try:
                     with open(backup_file, 'r', encoding='utf-8') as f:
-                        metadata = json.load(f)["metadata"]
+                        data = json.load(f)
+
+                    # Ensure metadata exists
+                    if "metadata" not in data:
+                        logger.warning(f"Backup file {backup_file} missing metadata, skipping")
+                        continue
+
+                    metadata = data["metadata"]
+
+                    # Ensure required metadata fields exist
+                    if "timestamp" not in metadata or "type" not in metadata:
+                        logger.warning(f"Backup file {backup_file} missing required metadata fields, skipping")
+                        continue
 
                     backups.append({
                         "filename": backup_file.stem,
                         "timestamp": metadata["timestamp"],
-                        "type": metadata["type"],
+                        "type": metadata.get("type", "unknown"),
                         "size": backup_file.stat().st_size,
                         "path": str(backup_file)
                     })
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Invalid JSON in backup file {backup_file}: {e}, skipping")
+                    continue
                 except Exception as e:
-                    logger.warning(f"Failed to read backup metadata for {backup_file}: {e}")
+                    logger.warning(f"Failed to read backup metadata for {backup_file}: {e}, skipping")
+                    continue
 
             # Sort by timestamp (newest first)
-            backups.sort(key=lambda x: x["timestamp"], reverse=True)
+            try:
+                backups.sort(key=lambda x: x["timestamp"], reverse=True)
+            except Exception as e:
+                logger.warning(f"Failed to sort backups by timestamp: {e}")
+                # Return unsorted list if sorting fails
+                pass
+
             return backups
 
         except Exception as e:

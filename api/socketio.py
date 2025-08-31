@@ -14,15 +14,41 @@ def init_socketio(socketio_instance, app):
     global _socketio
     _socketio = socketio_instance
 
-    # Basic SocketIO configuration for Render free tier
-    socketio_instance.server_options.update({
-        'cors_allowed_origins': '*',
-        'ping_timeout': 30,
-        'ping_interval': 15,
-        'max_http_buffer_size': 500000,
-        'async_mode': 'threading',
-        'transports': ['websocket', 'polling']
-    })
+    # Ensure server options are properly configured
+    if hasattr(socketio_instance, 'server_options'):
+        # Update existing options with essential settings
+        current_options = socketio_instance.server_options.copy() if socketio_instance.server_options else {}
+
+        # Merge with required settings
+        socketio_instance.server_options.update({
+            'cors_allowed_origins': '*',
+            'ping_timeout': 30000,  # 30 seconds
+            'ping_interval': 15000,  # 15 seconds
+            'max_http_buffer_size': 500000,
+            'async_mode': 'threading',
+            'transports': ['websocket', 'polling'],
+            'allow_upgrades': True,
+            'cookie': False,  # Disable cookies for better compatibility
+            'path': '/socket.io'  # Ensure path matches client
+        })
+
+        # Preserve any existing settings that aren't being overridden
+        for key, value in current_options.items():
+            if key not in socketio_instance.server_options:
+                socketio_instance.server_options[key] = value
+    else:
+        # Set default options if none exist
+        socketio_instance.server_options = {
+            'cors_allowed_origins': '*',
+            'ping_timeout': 30000,
+            'ping_interval': 15000,
+            'max_http_buffer_size': 500000,
+            'async_mode': 'threading',
+            'transports': ['websocket', 'polling'],
+            'allow_upgrades': True,
+            'cookie': False,
+            'path': '/socket.io'
+        }
 
 # Basic Socket.IO event handlers
 
@@ -96,6 +122,71 @@ def broadcast_update(update_data, process=None):
     except Exception as e:
         # Silent error handling for light version
         pass
+
+@socketio.on('mark_as_read')
+def handle_mark_as_read(data):
+    """Handle mark as read via Socket.IO"""
+    try:
+        update_id = data.get('update_id')
+        if not update_id:
+            emit('error', {'message': 'Missing update_id'})
+            return
+
+        # Import here to avoid circular imports
+        from models import ReadLog
+        from extensions import db
+        from timezone_utils import now_utc
+        from flask import session, request
+
+        user_id = session.get("user_id")
+
+        if not user_id:
+            emit('error', {'message': 'User not authenticated'})
+            return
+
+        # Check if already marked as read
+        exists = ReadLog.query.filter_by(
+            update_id=update_id,
+            user_id=user_id
+        ).first()
+
+        if exists:
+            # Return current read count
+            from sqlalchemy import func
+            read_count = db.session.query(func.count(ReadLog.id)).filter_by(update_id=update_id).scalar()
+            emit('read_count_updated', {'update_id': update_id, 'read_count': read_count})
+            return
+
+        # Get client IP and user agent
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', 'Unknown'))
+        if ',' in client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+
+        # Create read log
+        log = ReadLog(
+            update_id=update_id,
+            user_id=user_id,
+            timestamp=now_utc(),
+            ip_address=client_ip,
+            user_agent=user_agent
+        )
+
+        db.session.add(log)
+        db.session.commit()
+
+        # Get updated read count
+        read_count = db.session.query(func.count(ReadLog.id)).filter_by(update_id=update_id).scalar()
+
+        emit('read_count_updated', {
+            'update_id': update_id,
+            'read_count': read_count,
+            'message': 'Marked as read successfully'
+        })
+
+    except Exception as e:
+        emit('error', {'message': f'Error marking as read: {str(e)}'})
 
 @socketio.on('test_connection')
 def handle_test_connection(data=None):

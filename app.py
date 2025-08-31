@@ -174,29 +174,23 @@ def create_app(config_name=None):
     socketio_kwargs = {
         'message_queue': None,
         'cors_allowed_origins': '*',
-        'ping_timeout': 30,  # Reduced from 60 for faster disconnect detection
-        'ping_interval': 15,  # Reduced from 25 for more frequent health checks
-        'max_http_buffer_size': 500000,  # Reduced from 1e6 for memory efficiency
-        'async_mode': 'threading',  # Use threading for better performance
-        'transports': ['websocket', 'polling'],  # Prefer WebSocket
+        'ping_timeout': 30000,  # 30 seconds
+        'ping_interval': 15000,  # 15 seconds
+        'max_http_buffer_size': 500000,
+        'async_mode': 'threading',
+        'transports': ['websocket', 'polling'],
         'compression': True,
-        'compression_threshold': 512,  # Compress smaller messages
+        'compression_threshold': 512,
+        'path': '/socket.io',  # Ensure path matches client
+        'allow_upgrades': True,
+        'cookie': False
     }
-    
-    socketio.init_app(app, **socketio_kwargs)
-    app.register_blueprint(read_logs_bp)
-    # Register new API blueprint (first milestone)
-    try:
-        from api.updates import updates_bp as api_bp
-        app.register_blueprint(api_bp)
-    except Exception:
-        # Blueprint registration should not break app startup if something is off
-        pass
-    
-    # Register Socket.IO blueprint for real-time updates
+
+    # Initialize Socket.IO blueprint first
     try:
         from api.socketio import bp as socketio_bp, init_socketio
         app.register_blueprint(socketio_bp)
+        # Initialize Socket.IO with proper configuration before init_app
         init_socketio(socketio, app)
         if os.getenv("FLASK_ENV") == "development":
             print("SUCCESS: Socket.IO blueprint registered successfully")
@@ -207,6 +201,16 @@ def create_app(config_name=None):
             print(f"WARNING: Socket.IO blueprint registration failed: {e}")
             import traceback
             print(f"WARNING: Full error: {traceback.format_exc()}")
+        pass
+
+    socketio.init_app(app, **socketio_kwargs)
+    app.register_blueprint(read_logs_bp)
+    # Register new API blueprint (first milestone)
+    try:
+        from api.updates import updates_bp as api_bp
+        app.register_blueprint(api_bp)
+    except Exception:
+        # Blueprint registration should not break app startup if something is off
         pass
     
     # Register search API blueprint
@@ -1829,12 +1833,12 @@ def create_app(config_name=None):
                 "error": str(e)
             }), 500
 
-    # Lightweight CSV export functionality for read logs (optimized for Render free tier)
+    # Excel export functionality for read logs with multiple sheets
     @app.route("/export_readlogs")
     @export_required
     @performance_logger
     def export_readlogs():
-        """Enhanced CSV export with read logs, activity logs, analytics, and metrics"""
+        """Enhanced Excel export with read logs, activity logs, analytics, and metrics in separate sheets"""
         logger.info("Export read logs function called")
         download = request.args.get('download', 'false').lower() == 'true'
         logger.info(f"Download parameter: {download}")
@@ -1844,96 +1848,82 @@ def create_app(config_name=None):
             logger.info("Showing export page (not downloading)")
             return render_template("export_readlogs.html", app_name=app.config["APP_NAME"])
 
-        # Generate enhanced CSV export with streaming and proper app context
-        def generate_csv():
-            import csv
-            import io
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font, PatternFill, Alignment
+            from io import BytesIO
 
-            # Memory-efficient CSV generation
-            output = io.StringIO()
-            writer = csv.writer(output)
+            # Create Excel workbook
+            wb = Workbook()
 
-            # Section 1: Read Logs
-            writer.writerow(['=== READ LOGS ==='])
-            writer.writerow([
+            # Remove default sheet
+            wb.remove(wb.active)
+
+            # Sheet 1: Read Logs
+            ws_readlogs = wb.create_sheet("Read Logs")
+            ws_readlogs.append([
                 'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Timestamp (IST)',
                 'IP Address', 'User Agent', 'Update Title', 'Process', 'Update Timestamp (IST)'
             ])
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
 
-            # Stream read logs data in chunks
-            chunk_size = 100
-            offset = 0
+            # Style header row
+            for col_num, cell in enumerate(ws_readlogs[1], 1):
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
-            while True:
-                with app.app_context():
-                    logger.info(f"Executing read logs query with offset: {offset}, chunk_size: {chunk_size}")
-                    read_logs = db.session.query(
-                        ReadLog.id,
-                        ReadLog.update_id,
-                        ReadLog.user_id,
-                        ReadLog.guest_name,
-                        ReadLog.timestamp,
-                        ReadLog.ip_address,
-                        ReadLog.user_agent,
-                        Update.name.label('update_name'),
-                        Update.process,
-                        Update.timestamp.label('update_timestamp')
-                    ).join(
-                        Update, ReadLog.update_id == Update.id
-                    ).order_by(
-                        ReadLog.timestamp.desc()
-                    ).limit(chunk_size).offset(offset).all()
+            # Get read logs data
+            with app.app_context():
+                read_logs = db.session.query(
+                    ReadLog.id,
+                    ReadLog.update_id,
+                    ReadLog.user_id,
+                    ReadLog.guest_name,
+                    ReadLog.timestamp,
+                    ReadLog.ip_address,
+                    ReadLog.user_agent,
+                    Update.name.label('update_name'),
+                    Update.process,
+                    Update.timestamp.label('update_timestamp')
+                ).join(
+                    Update, ReadLog.update_id == Update.id
+                ).order_by(
+                    ReadLog.timestamp.desc()
+                ).limit(10000).all()  # Limit for performance
 
-                    logger.info(f"Read logs query returned {len(read_logs)} records")
+            for log in read_logs:
+                try:
+                    reader_type = 'Registered' if log.user_id else 'Guest'
+                    reader_name = log.guest_name if not log.user_id else 'N/A'
+                    ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
+                    update_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
 
-                if not read_logs:
-                    logger.info("No more read log records to process")
-                    break
+                    ws_readlogs.append([
+                        log.id,
+                        log.update_id,
+                        reader_type,
+                        reader_name,
+                        ist_timestamp,
+                        log.ip_address or '',
+                        (log.user_agent or '')[:100],
+                        log.update_name,
+                        log.process,
+                        update_ist_timestamp
+                    ])
+                except Exception as row_error:
+                    logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
+                    continue
 
-                for log in read_logs:
-                    try:
-                        reader_type = 'Registered' if log.user_id else 'Guest'
-                        reader_name = log.guest_name if not log.user_id else 'N/A'
-                        ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
-                        update_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
-
-                        writer.writerow([
-                            log.id,
-                            log.update_id,
-                            reader_type,
-                            reader_name,
-                            ist_timestamp,
-                            log.ip_address or '',
-                            (log.user_agent or '')[:100],
-                            log.update_name,
-                            log.process,
-                            update_ist_timestamp
-                        ])
-                    except Exception as row_error:
-                        logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
-                        continue
-
-                yield output.getvalue()
-                output.seek(0)
-                output.truncate(0)
-                offset += chunk_size
-
-                if offset >= 10000:  # Safety limit
-                    break
-
-            # Section 2: Activity Logs
-            writer.writerow([])
-            writer.writerow(['=== ACTIVITY LOGS ==='])
-            writer.writerow([
+            # Sheet 2: Activity Logs
+            ws_activity = wb.create_sheet("Activity Logs")
+            ws_activity.append([
                 'Activity ID', 'User', 'Action', 'Entity Type', 'Entity Title',
                 'Timestamp (IST)', 'IP Address', 'User Agent', 'Details'
             ])
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
+
+            # Style header row
+            for col_num, cell in enumerate(ws_activity[1], 1):
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             # Get activity logs
             with app.app_context():
@@ -1952,14 +1942,14 @@ def create_app(config_name=None):
                     User, ActivityLog.user_id == User.id
                 ).order_by(
                     ActivityLog.timestamp.desc()
-                ).limit(1000).all()  # Limit to prevent excessive data
+                ).limit(5000).all()  # Limit for performance
 
             for log in activity_logs:
                 try:
                     ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
                     user_name = log.user_name if log.user_name else 'System'
 
-                    writer.writerow([
+                    ws_activity.append([
                         log.id,
                         user_name,
                         log.action,
@@ -1974,14 +1964,14 @@ def create_app(config_name=None):
                     logger.error(f"Error processing activity log entry {log.id}: {str(row_error)}")
                     continue
 
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
+            # Sheet 3: Summary Analytics
+            ws_analytics = wb.create_sheet("Summary Analytics")
+            ws_analytics.append(['Metric', 'Value'])
 
-            # Section 3: Summary Analytics
-            writer.writerow([])
-            writer.writerow(['=== SUMMARY ANALYTICS ==='])
-            writer.writerow(['Metric', 'Value'])
+            # Style header row
+            for col_num, cell in enumerate(ws_analytics[1], 1):
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Total reads
@@ -2009,24 +1999,29 @@ def create_app(config_name=None):
                 # Total updates
                 total_updates = db.session.query(func.count(Update.id)).scalar()
 
-            writer.writerow(['Total Reads', total_reads or 0])
-            writer.writerow(['Unique Registered Readers', unique_registered or 0])
-            writer.writerow(['Unique Guest Readers', unique_guests or 0])
-            writer.writerow(['Registered User Reads', registered_reads or 0])
-            writer.writerow(['Guest User Reads', guest_reads or 0])
-            writer.writerow(['Total Updates', total_updates or 0])
+            analytics_data = [
+                ['Total Reads', total_reads or 0],
+                ['Unique Registered Readers', unique_registered or 0],
+                ['Unique Guest Readers', unique_guests or 0],
+                ['Registered User Reads', registered_reads or 0],
+                ['Guest User Reads', guest_reads or 0],
+                ['Total Updates', total_updates or 0]
+            ]
 
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
+            for row in analytics_data:
+                ws_analytics.append(row)
 
-            # Section 4: Top Performers
-            writer.writerow([])
-            writer.writerow(['=== TOP PERFORMERS ==='])
+            # Sheet 4: Top Performers
+            ws_performers = wb.create_sheet("Top Performers")
 
-            # Most active readers
-            writer.writerow(['Most Active Readers'])
-            writer.writerow(['Reader Name', 'Reader Type', 'Total Reads'])
+            # Most active readers section
+            ws_performers.append(['Most Active Readers'])
+            ws_performers.append(['Reader Name', 'Reader Type', 'Total Reads'])
+
+            # Style headers
+            for col_num, cell in enumerate(ws_performers[2], 1):
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Top registered readers
@@ -2054,15 +2049,15 @@ def create_app(config_name=None):
                 ).limit(10).all()
 
             for reader, count in top_registered:
-                writer.writerow([reader, 'Registered', count])
+                ws_performers.append([reader, 'Registered', count])
 
             for reader, count in top_guests:
-                writer.writerow([reader, 'Guest', count])
+                ws_performers.append([reader, 'Guest', count])
 
-            # Most popular updates
-            writer.writerow([])
-            writer.writerow(['Most Popular Updates'])
-            writer.writerow(['Update Title', 'Process', 'Total Reads'])
+            # Most popular updates section
+            ws_performers.append([])
+            ws_performers.append(['Most Popular Updates'])
+            ws_performers.append(['Update Title', 'Process', 'Total Reads'])
 
             with app.app_context():
                 top_updates = db.session.query(
@@ -2078,16 +2073,16 @@ def create_app(config_name=None):
                 ).limit(10).all()
 
             for title, process, count in top_updates:
-                writer.writerow([title, process, count])
+                ws_performers.append([title, process, count])
 
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
+            # Sheet 5: Engagement Metrics by Process
+            ws_engagement = wb.create_sheet("Engagement by Process")
+            ws_engagement.append(['Process', 'Total Updates', 'Total Reads', 'Unique Readers', 'Avg Reads per Update'])
 
-            # Section 5: Engagement Metrics by Process Categories
-            writer.writerow([])
-            writer.writerow(['=== ENGAGEMENT METRICS BY PROCESS ==='])
-            writer.writerow(['Process', 'Total Updates', 'Total Reads', 'Unique Readers', 'Avg Reads per Update'])
+            # Style header row
+            for col_num, cell in enumerate(ws_engagement[1], 1):
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Get process metrics with proper unique reader counting
@@ -2103,7 +2098,7 @@ def create_app(config_name=None):
                     Update.process
                 ).all()
 
-                # Get unique readers per process using a subquery approach
+                # Get unique readers per process
                 process_unique_readers = {}
                 for process_name, _, _ in process_metrics:
                     # Count unique registered users for this process
@@ -2132,23 +2127,49 @@ def create_app(config_name=None):
             for process, update_count, read_count in process_metrics:
                 unique_readers = process_unique_readers.get(process, 0)
                 avg_reads = round(read_count / update_count, 2) if update_count > 0 else 0
-                writer.writerow([process, update_count, read_count, unique_readers, avg_reads])
+                ws_engagement.append([process, update_count, read_count, unique_readers, avg_reads])
 
-            yield output.getvalue()
+            # Auto-adjust column widths for all sheets
+            for ws in [ws_readlogs, ws_activity, ws_analytics, ws_performers, ws_engagement]:
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                    ws.column_dimensions[column_letter].width = adjusted_width
 
-        # Generate timestamp for filename
-        timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
+            # Generate timestamp for filename
+            timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
 
-        # Return streaming CSV response
-        response = Response(
-            generate_csv(),
-            mimetype='text/csv',
-            headers={
-                'Content-Disposition': f'attachment; filename=readlogs_export_{timestamp_str}.csv',
-                'Cache-Control': 'no-cache'
-            }
-        )
-        return response
+            # Save workbook to BytesIO
+            excel_buffer = BytesIO()
+            wb.save(excel_buffer)
+            excel_buffer.seek(0)
+
+            # Return Excel response
+            response = Response(
+                excel_buffer.getvalue(),
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers={
+                    'Content-Disposition': f'attachment; filename=readlogs_export_{timestamp_str}.xlsx',
+                    'Cache-Control': 'no-cache'
+                }
+            )
+            return response
+
+        except ImportError:
+            logger.error("openpyxl not available, falling back to CSV export")
+            flash("Excel export library not available. Please install required dependencies.", "error")
+            return redirect(url_for('export_readlogs'))
+        except Exception as e:
+            logger.error(f"Error generating Excel export: {e}")
+            flash("Error generating export file. Please try again.", "error")
+            return redirect(url_for('export_readlogs'))
 
     @app.route("/reset_activity_logs", methods=["POST"])
     @admin_required
@@ -2203,9 +2224,13 @@ def create_app(config_name=None):
             return render_template("backup.html",
                                  app_name=app.config["APP_NAME"],
                                  backups=backups)
+        except ImportError as e:
+            logger.error(f"Failed to import backup system: {e}")
+            flash("Backup system module not found.", "error")
+            return redirect(url_for("home"))
         except Exception as e:
             logger.error(f"Error loading backup page: {e}")
-            flash("Error loading backup page.", "error")
+            flash("Error loading backup page. Please try again later.", "error")
             return redirect(url_for("home"))
 
     @app.route("/backup/create", methods=["POST"])

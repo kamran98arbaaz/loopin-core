@@ -1056,20 +1056,6 @@
         </div>
 
         {% if current_user.is_authenticated %}
-           <!-- Export and Backup Links (Admin only) -->
-           {% if user_role.is_admin %}
-             <a href="{{ url_for('export_readlogs') }}" class="btn btn-secondary">
-               <i class="fas fa-download"></i>
-               <span class="sr-only">Export Data</span>
-               Export
-             </a>
-             <a href="{{ url_for('backup_page') }}" class="btn btn-secondary">
-               <i class="fas fa-database"></i>
-               <span class="sr-only">Database Backup</span>
-               Backup
-             </a>
-           {% endif %}
-
            <span class="welcome-text">
              Welcome back, {{ current_user.display_name }}
              {% if user_role.is_admin %}

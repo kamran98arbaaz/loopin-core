@@ -56,15 +56,26 @@ document.addEventListener('DOMContentLoaded', () => {
         reader_name: guestName
       })
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) {
+        throw new Error(`HTTP error! status: ${r.status}`);
+      }
+      return r.json();
+    })
     .then(j => {
       if (j.status === 'success') {
         if (currentCountElement) {
           currentCountElement.textContent = `📖 ${j.read_count} reads`;
         }
+        console.log('✅ Successfully marked as read');
       } else {
+        console.error('❌ Error marking as read:', j.message);
         alert(j.message || 'Error marking as read');
       }
+    })
+    .catch(error => {
+      console.error('❌ Network error marking as read:', error);
+      alert('Network error. Please try again.');
     });
   }
 });
