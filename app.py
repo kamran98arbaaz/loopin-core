@@ -2601,7 +2601,7 @@ def create_app(config_name=None):
                     "display_name": user.display_name,
                     "email": user.email,
                     "role": user.role,
-                    "created_at": user.created_at.isoformat() if user.created_at else None
+                    "created_at": getattr(user, 'created_at', None).isoformat() if getattr(user, 'created_at', None) else None
                 } for user in users
             ]
 
@@ -2715,13 +2715,14 @@ def create_app(config_name=None):
                     writer = csv.writer(user_output)
                     writer.writerow(['ID', 'Username', 'Display Name', 'Email', 'Role', 'Created At'])
                     for user in users:
+                        created_at_value = getattr(user, 'created_at', None)
                         writer.writerow([
                             user.id,
                             user.username,
                             user.display_name,
                             user.email,
                             user.role,
-                            user.created_at.isoformat() if user.created_at else ''
+                            created_at_value.isoformat() if created_at_value else ''
                         ])
                     zip_file.writestr('users.csv', user_output.getvalue())
 

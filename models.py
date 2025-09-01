@@ -82,6 +82,7 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=True)
     password_hash = db.Column(db.Text, nullable=False)
     role = db.Column(db.String(20), nullable=False, default='user')
+    created_at = db.Column(db.DateTime, nullable=False, default=now_utc)
 
     read_logs = db.relationship(
         'ReadLog',

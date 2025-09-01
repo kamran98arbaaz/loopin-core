@@ -868,35 +868,26 @@
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
 
-    console.log('Highlighting recent updates...');
-
     document.querySelectorAll('.update-card[data-timestamp]').forEach(card => {
       const timestampStr = card.dataset.timestamp;
-      console.log('Processing card with timestamp:', timestampStr);
 
       if (!timestampStr || timestampStr === '') {
-        console.log('Skipping card with empty timestamp');
         return;
       }
 
       try {
         const timestamp = new Date(timestampStr);
         if (isNaN(timestamp.getTime())) {
-          console.log('Invalid timestamp format:', timestampStr);
           return;
         }
 
-        console.log('Comparing:', timestamp, 'with', twentyFourHoursAgo);
         if (timestamp > twentyFourHoursAgo) {
           card.classList.add('recent');
-          console.log('Added recent class to card');
         }
       } catch (error) {
-        console.error('Error parsing timestamp:', timestampStr, error);
+        // Silently handle parsing errors
       }
     });
-
-    console.log('Recent updates highlighting completed');
   }
 
   // Update cards now use CSS-only hover effects for better performance
