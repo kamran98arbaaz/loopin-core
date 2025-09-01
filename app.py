@@ -276,61 +276,41 @@ def create_app(config_name=None):
     # Initialize extensions
     migrate.init_app(app, db)
     login_manager.init_app(app)
-    
-    # Initialize Socket.IO with Vercel-compatible configuration
+
+    # Initialize Socket.IO with minimal configuration for toast notifications
     socketio_kwargs = {
-        'message_queue': None,
         'cors_allowed_origins': '*',
-        'ping_timeout': 20000,  # Reduced for faster disconnect detection
-        'ping_interval': 25000,  # Increased to reduce server load
-        'max_http_buffer_size': 50000,  # Further reduced for memory efficiency
+        'ping_timeout': 20000,
+        'ping_interval': 25000,
         'async_mode': 'threading',
-        # Vercel serverless functions don't support WebSocket well, use polling only
         'transports': ['polling'],
-        'compression': True,
-        'compression_threshold': 2048,  # Increased to reduce compression overhead
-        'path': '/socket.io',
-        'allow_upgrades': False,  # Disable WebSocket upgrades for Vercel compatibility
+        'allow_upgrades': False,
         'cookie': False,
-        # Performance optimizations
-        'connect_timeout': 8000,   # Reduced connection timeout
-        'upgrade_timeout': 4000,   # Reduced upgrade timeout
-        'max_reconnection_attempts': 3,  # Reduced reconnection attempts
-        'reconnection_delay': 1000,     # Reduced base delay
-        'reconnection_delay_max': 5000, # Reduced max delay
-        'randomization_factor': 0.2,    # Less randomization
-        # Memory optimizations
-        'max_http_buffer_size': 50000,
-        'http_compression': True,
-        'per_message_deflate': True,
-        'force_base64': False,  # Disable base64 for better performance
-        # Additional performance settings
-        'close_timeout': 3000,    # Faster close timeout
-        'heartbeat_timeout': 15000, # Reduced heartbeat timeout
-        'polling_duration': 20000,   # Polling duration
-        # Connection pool optimizations
-        'max_connections': 100,   # Limit concurrent connections
-        'max_http_connections': 50 # Limit HTTP connections
+        'path': '/socket.io',
+        'compression': True,
+        'compression_threshold': 2048,
+        'connect_timeout': 8000,
+        'close_timeout': 3000,
+        'max_connections': 100,
+        'max_http_connections': 50
     }
 
-    # Initialize Socket.IO blueprint first
+    # Initialize Socket.IO blueprint for toast notifications
     try:
         from api.socketio import bp as socketio_bp, init_socketio
         app.register_blueprint(socketio_bp)
-        # Initialize Socket.IO with proper configuration before init_app
         init_socketio(socketio, app)
         if os.getenv("FLASK_ENV") == "development":
-            print("SUCCESS: Socket.IO blueprint registered successfully")
+            print("SUCCESS: Socket.IO blueprint registered for toast notifications")
     except Exception as e:
-        # Socket.IO registration should not break app startup if something is off
         logger.error(f"Socket.IO blueprint registration failed: {e}")
         if os.getenv("FLASK_ENV") == "development":
             print(f"WARNING: Socket.IO blueprint registration failed: {e}")
-            import traceback
-            print(f"WARNING: Full error: {traceback.format_exc()}")
         pass
 
     socketio.init_app(app, **socketio_kwargs)
+    
+
     app.register_blueprint(read_logs_bp)
     # Register new API blueprint (first milestone)
     try:
@@ -1311,11 +1291,8 @@ def create_app(config_name=None):
                 # Log activity
                 log_activity('created', 'update', new_update.id, f"Update: {message[:50]}...")
 
-                # Broadcast the new update via Socket.IO
+                # Broadcast update notification for toast
                 try:
-                    if os.getenv("FLASK_ENV") == "development":
-                        logger.info(f"🔄 Broadcasting new update via Socket.IO - ID: {new_update.id}")
-                        print(f"🔄 Broadcasting new update via Socket.IO - ID: {new_update.id}")
                     from api.socketio import broadcast_update
                     update_data = {
                         'id': new_update.id,
@@ -1324,18 +1301,10 @@ def create_app(config_name=None):
                         'message': new_update.message,
                         'timestamp': new_update.timestamp.isoformat()
                     }
-                    if os.getenv("FLASK_ENV") == "development":
-                        logger.info(f"📦 Update data prepared: {update_data}")
-                        print(f"📦 Update data prepared for broadcasting")
                     broadcast_update(update_data, selected_process)
-                    if os.getenv("FLASK_ENV") == "development":
-                        logger.info(f"✅ Broadcast function called successfully for update {new_update.id}")
-                        print(f"✅ Broadcast function called successfully for update {new_update.id}")
                 except Exception as e:
-                    # Socket.IO broadcasting failure shouldn't break the posting
-                    logger.error(f"❌ Socket.IO broadcast failed: {e}")
-                    if os.getenv("FLASK_ENV") == "development":
-                        print(f"❌ Socket.IO broadcast failed: {e}")
+                    logger.error(f"Socket.IO broadcast failed: {e}")
+
 
             except Exception as e:
                 db.session.rollback()
@@ -1623,18 +1592,6 @@ def create_app(config_name=None):
                 # Log activity
                 log_activity('created', 'sop', sop.id, title)
 
-                # Broadcast notification for new SOP
-                try:
-                    from api.socketio import broadcast_notification
-                    broadcast_notification({
-                        'type': 'new_sop',
-                        'title': 'New SOP Added',
-                        'message': f'**NEW SOP:** {title}',
-                        'timestamp': now_utc().isoformat()
-                    })
-                except Exception as e:
-                    if os.getenv("FLASK_ENV") == "development":
-                        print(f"Socket.IO broadcast failed: {e}")
 
                 return redirect(url_for("list_sop_summaries"))
             except Exception as e:
@@ -1779,18 +1736,6 @@ def create_app(config_name=None):
                 # Log activity
                 log_activity('created', 'lesson', lesson.id, title)
 
-                # Broadcast notification for new Lesson Learned
-                try:
-                    from api.socketio import broadcast_notification
-                    broadcast_notification({
-                        'type': 'new_lesson',
-                        'title': 'New Lesson Learned',
-                        'message': f'**NEW LESSON:** {title}',
-                        'timestamp': now_utc().isoformat()
-                    })
-                except Exception as e:
-                    if os.getenv("FLASK_ENV") == "development":
-                        print(f"Socket.IO broadcast failed: {e}")
 
                 return redirect(url_for("list_lessons_learned"))
             except Exception as e:
@@ -3135,9 +3080,7 @@ def create_app(config_name=None):
             response.headers['X-Debug-Mode'] = 'true'
             response.headers['X-Timestamp'] = now_utc().isoformat()
             response.headers['X-Status'] = 'healthy'
-            response.headers['X-Connection-Status'] = 'ready'
             response.headers['X-SocketIO-Version'] = '4.7.2'
-            response.headers['X-Debug-Info'] = 'Socket.IO debugging enabled'
 
         return response
 
@@ -3174,15 +3117,6 @@ def create_app(config_name=None):
             'message': 'An unexpected error occurred.'
         }), 500
 
-    # Socket.IO error handler
-    @socketio.on_error
-    def handle_socketio_error(e):
-        """Handle Socket.IO errors"""
-        logger.error(f"Socket.IO error: {e}")
-        try:
-            db.session.rollback()
-        except:
-            pass
 
     # Database teardown for request context
     @app.teardown_request
@@ -3196,6 +3130,16 @@ def create_app(config_name=None):
                 pass
         try:
             db.session.remove()
+        except:
+            pass
+
+    # Socket.IO error handler
+    @socketio.on_error
+    def handle_socketio_error(e):
+        """Handle Socket.IO errors"""
+        logger.error(f"Socket.IO error: {e}")
+        try:
+            db.session.rollback()
         except:
             pass
 

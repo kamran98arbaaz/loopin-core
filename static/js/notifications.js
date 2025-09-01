@@ -1,7 +1,8 @@
-// Enhanced Notifications System with Socket.IO integration
+// Clean Toast Notifications System
 let socket;
 let notifications = [];
 let unreadCount = 0;
+let shownToasts = new Set(); // Track shown toasts to prevent duplicates
 
 // Performance optimization: Debounce function
 function debounce(func, wait) {
@@ -16,110 +17,110 @@ function debounce(func, wait) {
     };
 }
 
-// Initialize Socket.IO connection
+// Initialize Socket.IO connection for toast notifications
 function initializeSocketIO() {
-    console.log('🔌 Initializing Socket.IO connection...');
+    console.log('🔌 Initializing Socket.IO for toast notifications...');
 
     if (typeof io !== 'undefined') {
-        console.log('✅ Socket.IO library available, creating connection...');
+        console.log('✅ Socket.IO library available');
 
-        // Get the current host for Socket.IO connection
+        // Get the current host
         const protocol = window.location.protocol;
         const host = window.location.host;
         const socketUrl = `${protocol}//${host}`;
 
-        console.log('🔗 Connecting to Socket.IO at:', socketUrl);
+        console.log('🔗 Connecting to:', socketUrl);
 
-        // Detect if running on Vercel (serverless environment)
-        const isVercel = host.includes('vercel.app') ||
-                        host.includes('now.sh') ||
-                        window.location.hostname.includes('vercel') ||
-                        document.querySelector('meta[name="generator"][content*="Vercel"]') !== null;
-
-        console.log('🌐 Deployment detected:', isVercel ? 'Vercel' : 'Other');
-
-        // Configure transports based on deployment
-        let socketConfig = {
-            timeout: 30000, // Increased timeout for stability
-            forceNew: true, // Force new connection to avoid stale connections
+        // Simple configuration for toast notifications
+        const socketConfig = {
+            timeout: 20000,
+            forceNew: true,
             reconnection: true,
-            reconnectionAttempts: Infinity, // Keep trying to reconnect
+            reconnectionAttempts: 5,
             reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            randomizationFactor: 0.5,
             secure: window.location.protocol === 'https:',
-            rejectUnauthorized: false,
-            autoConnect: true,
             path: '/socket.io',
-            // Error recovery settings
-            closeOnBeforeunload: false,
-            retries: 3,
-            // Performance optimizations
-            perMessageDeflate: true,
-            httpCompression: true,
-            forceBase64: false,
-            // Session management
-            auth: {
-                timestamp: Date.now(),
-                sessionId: sessionStorage.getItem('socketSessionId') || Date.now().toString(),
-                userAgent: navigator.userAgent.substring(0, 100),
-                protocol: window.location.protocol,
-                host: window.location.host
-            }
+            transports: ['polling'],
+            allowUpgrades: false
         };
 
-        if (isVercel) {
-            // Vercel serverless: Use polling only (WebSocket not supported)
-            console.log('⚡ Using polling transport for Vercel deployment');
-            socketConfig.transports = ['polling'];
-            socketConfig.upgrade = false;
-            socketConfig.rememberUpgrade = false;
-            socketConfig.pingTimeout = 60000;
-            socketConfig.pingInterval = 25000;
-            // Additional polling-specific settings for Vercel
-            socketConfig.forceBase64 = true;
-            socketConfig.timestampRequests = true;
-            socketConfig.timestampParam = 't';
-        } else {
-            // Other deployments: Try WebSocket first, fallback to polling
-            console.log('🔄 Using WebSocket + polling fallback for standard deployment');
-            socketConfig.transports = ['websocket', 'polling'];
-            socketConfig.upgrade = true;
-            socketConfig.rememberUpgrade = true;
-            socketConfig.pingTimeout = 60000;
-            socketConfig.pingInterval = 25000;
-        }
-
         socket = io(socketUrl, socketConfig);
-        console.log('🔧 Socket.IO connection options set');
+        console.log('🔧 Socket.IO connection configured');
 
-        // Attach all event handlers
+        // Attach event handlers
         attachSocketEventHandlers();
     } else {
-        console.error('❌ Socket.IO library not available! Check if CDN is loading properly.');
+        console.error('❌ Socket.IO library not available');
     }
+}
+
+// Initialize toast notification system
+function initializeToastNotifications() {
+    console.log('🍞 Initializing toast notification system...');
+
+    // Initialize Socket.IO for toast notifications
+    initializeSocketIO();
+
+    // Load existing notifications from localStorage
+    loadNotificationsFromStorage();
+
+    // Update UI
+    updateUnreadCounterEnhanced(unreadCount);
 }
 
 // Add a new notification
 function addNotification(notification) {
     notifications.unshift(notification);
-    
+
     // Keep only last 50 notifications
     if (notifications.length > 50) {
         notifications = notifications.slice(0, 50);
     }
-    
+
     // Update unread count
     if (notification.unread) {
         unreadCount++;
         updateUnreadCounterEnhanced(unreadCount);
     }
-    
+
     // Update notifications panel
     updateNotificationsPanel();
-    
+
     // Store in localStorage
     localStorage.setItem('notifications', JSON.stringify(notifications));
+}
+
+
+// Show toast notification for new update
+function showUpdateToast(update) {
+    // Prevent duplicate toasts for the same update
+    if (shownToasts.has(update.id)) {
+        console.log('Toast already shown for update:', update.id);
+        return;
+    }
+
+    const userName = update.name || 'Unknown User';
+    const processInfo = update.process ? ` in **${update.process}** process` : '';
+    const message = `New update posted by **${userName}**${processInfo}`;
+
+    showToast(message, 'permanent', update.id);
+
+    // Play notification sound
+    console.log('🔊 Playing notification sound for new update...');
+    playNotificationSound();
+
+    // Mark this update as shown
+    shownToasts.add(update.id);
+
+    // Add to notifications list
+    addNotification({
+        type: 'new_update',
+        title: 'New Update',
+        message: `New update from ${userName}${processInfo}`,
+        update_id: update.id,
+        timestamp: update.timestamp,
+        unread: true
+    });
 }
 
 // Update the unread counter display
@@ -349,23 +350,37 @@ function loadNotificationsFromStorage() {
 
 // Play notification sound
 function playNotificationSound() {
-    // Check if user has enabled sound notifications
+    // Check if user has enabled sound notifications (default to true)
     const soundEnabled = localStorage.getItem('notificationSoundEnabled') !== 'false';
-    if (!soundEnabled) return;
+    console.log('🔊 Sound enabled:', soundEnabled);
+
+    if (!soundEnabled) {
+        console.log('🔇 Sound notifications disabled by user');
+        return;
+    }
 
     try {
+        console.log('🎵 Attempting to play notification sound...');
         const audio = new Audio('/static/sounds/notification.mp3');
         audio.volume = 0.5; // Set volume to 50%
 
         // Add error handling for audio loading
         audio.addEventListener('error', function(e) {
-            console.log('Error loading notification sound:', e);
+            console.error('❌ Error loading notification sound:', e);
         });
 
-        audio.play().catch(error => {
-            console.log('Could not play notification sound:', error);
+        // Add success handler
+        audio.addEventListener('canplaythrough', function() {
+            console.log('✅ Notification sound loaded successfully');
+        });
+
+        audio.play().then(() => {
+            console.log('🎵 Notification sound played successfully');
+        }).catch(error => {
+            console.error('❌ Could not play notification sound:', error);
             // Fallback: try to create a simple beep sound
             try {
+                console.log('🔄 Attempting fallback beep sound...');
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioContext.createOscillator();
                 const gainNode = audioContext.createGain();
@@ -380,17 +395,18 @@ function playNotificationSound() {
 
                 oscillator.start(audioContext.currentTime);
                 oscillator.stop(audioContext.currentTime + 0.3);
+                console.log('✅ Fallback beep sound played');
             } catch (fallbackError) {
-                console.log('Fallback sound also failed:', fallbackError);
+                console.error('❌ Fallback sound also failed:', fallbackError);
             }
         });
     } catch (error) {
-        console.log('Error creating notification sound:', error);
+        console.error('❌ Error creating notification sound:', error);
     }
 }
 
 // Show toast message
-function showToast(message, duration = 6000) {
+function showToast(message, duration = 6000, updateId = null) {
     const toast = document.createElement('div');
     toast.className = 'toast';
 
@@ -423,8 +439,9 @@ function showToast(message, duration = 6000) {
 
     document.body.appendChild(toast);
 
-    // Add unique ID to prevent conflicts
-    toast.id = 'toast-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    // Add unique ID to prevent conflicts, include update ID if provided
+    const baseId = updateId ? `update-${updateId}` : `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    toast.id = baseId;
 
     setTimeout(() => {
         toast.classList.add('show');
@@ -442,6 +459,19 @@ function showToast(message, duration = 6000) {
 
 // Close toast function
 function closeToast(toast) {
+    // Remove from shown toasts if it was a permanent update toast
+    if (toast.classList.contains('toast-permanent')) {
+        // Find the update ID from the toast ID
+        const toastId = toast.id;
+        if (toastId && toastId.startsWith('update-')) {
+            const updateId = toastId.substring(7); // Remove 'update-' prefix
+            if (updateId) {
+                shownToasts.delete(updateId);
+                console.log('Removed update from shown toasts:', updateId);
+            }
+        }
+    }
+
     toast.classList.remove('show');
     setTimeout(() => {
         if (document.body.contains(toast)) {
@@ -465,8 +495,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load existing notifications
     loadNotificationsFromStorage();
 
-    // Initialize Socket.IO
-    initializeSocketIO();
+    // Initialize toast notification system
+    initializeToastNotifications();
 
     // Update unread counter display
     updateUnreadCounterEnhanced(unreadCount);
@@ -513,6 +543,12 @@ function toggleNotificationSound() {
 
 // Initialize sound toggle state
 function initializeSoundToggle() {
+    // Set default to true if not already set
+    if (localStorage.getItem('notificationSoundEnabled') === null) {
+        localStorage.setItem('notificationSoundEnabled', 'true');
+        console.log('🔊 Sound notifications enabled by default for new user');
+    }
+
     const soundEnabled = localStorage.getItem('notificationSoundEnabled') !== 'false';
     const soundToggle = document.getElementById('soundToggle');
     const soundIcon = document.getElementById('soundIcon');
@@ -530,343 +566,23 @@ function initializeSoundToggle() {
     }
 }
 
-// Test Socket.IO connection
-function testSocketConnection() {
-    console.log('🧪 Testing Socket.IO connection...');
 
-    if (!socket) {
-        console.error('❌ Socket.IO not initialized');
-        return;
-    }
 
-    if (!socket.connected) {
-        console.error('❌ Socket.IO not connected');
-        return;
-    }
 
-    console.log('📡 Sending test message...');
-    socket.emit('test_connection', {
-        message: 'Test from browser',
-        timestamp: new Date().toISOString()
-    });
-
-    // Listen for test response
-    socket.once('test_response', function(data) {
-        console.log('✅ Test response received:', data);
-        if (data.error) {
-            console.error('❌ Test failed:', data.error);
-        } else {
-            console.log('🎉 Socket.IO connection test successful!');
-        }
-    });
-
-    // Timeout for test
-    setTimeout(() => {
-        console.log('⏰ Test timeout - no response received');
-    }, 5000);
-}
-
-// Connection error handling - optimized for performance
-let connectionErrorToast = null;
-let connectionErrorCount = 0;
-let lastConnectionErrorTime = 0;
-let isReconnecting = false; // Prevent duplicate reconnection attempts
-
-function showConnectionErrorToast() {
-    const now = Date.now();
-
-    // Check if we already have an active error toast to prevent piling
-    if (connectionErrorToast && document.body.contains(connectionErrorToast)) {
-        return;
-    }
-
-    // Only show error toast if it's been more than 30 seconds since last error
-    if (now - lastConnectionErrorTime < 30000) {
-        return;
-    }
-
-    lastConnectionErrorTime = now;
-    connectionErrorCount++;
-
-    // Only show error toast after 3 failed attempts
-    if (connectionErrorCount >= 3) {
-        // Double-check and clear any existing toasts before creating new one
-        clearAllConnectionErrorToasts();
-
-        connectionErrorToast = showToast(
-            '⚠️ Real-time updates connection lost. Using offline mode.',
-            'permanent'
-        );
-    }
-}
-
-function clearConnectionErrorToast() {
-    if (connectionErrorToast) {
-        closeToast(connectionErrorToast);
-        connectionErrorToast = null;
-    }
-}
-
-// Clear all connection error toasts from DOM to prevent piling
-function clearAllConnectionErrorToasts() {
-    // Find all toasts with the connection error message
-    const errorToasts = document.querySelectorAll('.toast');
-
-    errorToasts.forEach(toast => {
-        const toastContent = toast.querySelector('.toast-content') || toast;
-        if (toastContent && toastContent.innerHTML &&
-            toastContent.innerHTML.includes('Real-time updates connection lost')) {
-            closeToast(toast);
-        }
-    });
-
-    // Also clear the tracked toast reference
-    if (connectionErrorToast) {
-        connectionErrorToast = null;
-    }
-}
-
-// Enhanced transport fallback mechanism
-function forcePollingFallback() {
-    console.log('🔄 Forcing polling transport fallback...');
-
-    if (socket) {
-        socket.disconnect();
-    }
-
-    // Create new connection with polling only
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-    const socketUrl = `${protocol}//${host}`;
-
-    // Detect if running on Vercel
-    const isVercel = host.includes('vercel.app') ||
-                    host.includes('now.sh') ||
-                    window.location.hostname.includes('vercel') ||
-                    document.querySelector('meta[name="generator"][content*="Vercel"]') !== null;
-
-    let pollingConfig = {
-        transports: ['polling'], // Force polling only as fallback
-        timeout: 20000,
-        forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 2000,
-        secure: window.location.protocol === 'https:',
-        rejectUnauthorized: false,
-        path: '/socket.io',
-        closeOnBeforeunload: false,
-        autoConnect: true,
-        // Session management
-        auth: {
-            timestamp: Date.now(),
-            sessionId: sessionStorage.getItem('socketSessionId') || Date.now().toString(),
-            userAgent: navigator.userAgent.substring(0, 100),
-            protocol: window.location.protocol,
-            host: window.location.host
-        }
-    };
-
-    if (isVercel) {
-        // Vercel-specific polling settings
-        pollingConfig.pingTimeout = 60000;
-        pollingConfig.pingInterval = 25000;
-        pollingConfig.forceBase64 = true;
-        pollingConfig.timestampRequests = true;
-        pollingConfig.timestampParam = 't';
-        pollingConfig.extraHeaders = {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Cache-Control': 'no-cache'
-        };
-        console.log('⚡ Using Vercel-optimized polling settings');
-    } else {
-        // Standard polling settings
-        pollingConfig.pingTimeout = 60000;
-        pollingConfig.pingInterval = 25000;
-        pollingConfig.forceBase64 = false;
-        pollingConfig.timestampRequests = true;
-        pollingConfig.timestampParam = 't';
-        pollingConfig.extraHeaders = {
-            'X-Requested-With': 'XMLHttpRequest',
-            'Cache-Control': 'no-cache'
-        };
-        console.log('🔄 Using standard polling settings');
-    }
-
-    socket = io(socketUrl, pollingConfig);
-
-    // Re-attach all event handlers
-    attachSocketEventHandlers();
-    console.log('✅ Polling fallback connection created');
-}
-
+// Attach Socket.IO event handlers for toast notifications
 function attachSocketEventHandlers() {
-    // Connection events
     socket.on('connect', function() {
-        console.log('✅ Connected to real-time updates - Socket ID:', socket.id);
-        console.log('🔗 Connection details:', {
-            connected: socket.connected,
-            disconnected: socket.disconnected,
-            transport: socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown',
-            protocol: window.location.protocol,
-            host: window.location.host
-        });
-
-        // Detect deployment type for logging
-        const host = window.location.host;
-        const isVercel = host.includes('vercel.app') || host.includes('now.sh') || window.location.hostname.includes('vercel');
-        console.log('🌐 Deployment context:', isVercel ? 'Vercel' : 'Other', '- Transport:', socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown');
-
-        // Request initial unread count
-        console.log('📊 Requesting initial unread count...');
-        socket.emit('get_unread_count');
-
-        // Clear any connection error toasts (including piled ones)
-        clearAllConnectionErrorToasts();
-        connectionErrorCount = 0; // Reset error count on successful connection
+        console.log('✅ Connected to Socket.IO for toast notifications');
     });
 
     socket.on('disconnect', function() {
-        console.log('❌ Disconnected from real-time updates');
+        console.log('❌ Disconnected from Socket.IO');
     });
 
-    socket.on('connect_error', function(error) {
-        console.error('🚫 Socket.IO connection error:', error);
-        console.error('Error details:', {
-            type: error.type,
-            description: error.description,
-            context: error.context,
-            transport: socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown',
-            protocol: window.location.protocol,
-            host: window.location.host
-        });
-
-        // Detect deployment type for better error context
-        const host = window.location.host;
-        const isVercel = host.includes('vercel.app') || host.includes('now.sh') || window.location.hostname.includes('vercel');
-        console.error('🌐 Deployment context:', isVercel ? 'Vercel' : 'Other', '- Error type:', error.type);
-
-        if (isVercel && error.type === 'TransportError') {
-            console.warn('⚠️ Vercel deployment detected with TransportError - this is expected for WebSocket attempts');
-        }
-
-        // Show connection error toast (but don't spam)
-        showConnectionErrorToast();
-    });
-
-    socket.on('connect_timeout', function() {
-        console.error('⏰ Socket.IO connection timeout');
-    });
-
-    socket.on('reconnect', function(attemptNumber) {
-        console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
-        isReconnecting = false; // Reset reconnection flag
-        clearAllConnectionErrorToasts();
-        connectionErrorCount = 0;
-    });
-
-    socket.on('reconnect_attempt', function(attemptNumber) {
-        console.log('🔄 Socket.IO reconnection attempt', attemptNumber);
-    });
-
-    socket.on('reconnect_error', function(error) {
-        console.error('🚫 Socket.IO reconnection error:', error);
-    });
-
-    socket.on('reconnect_failed', function() {
-        console.error('❌ Socket.IO reconnection failed permanently');
-        // Force polling fallback after all reconnection attempts fail
-        setTimeout(forcePollingFallback, 1000);
-    });
-
-    // Handle real-time updates
     socket.on('new_update', function(data) {
         console.log('🔔 New update received via Socket.IO:', data);
-        console.log('📦 Update details - ID:', data.id, 'Name:', data.name, 'Process:', data.process);
-
-        addNotification({
-            type: 'new_update',
-            title: 'New Update',
-            message: `New update from ${data.name || 'Unknown'}`,
-            update_id: data.id,
-            timestamp: new Date().toISOString(),
-            unread: true
-        });
-
-        console.log('🔊 Playing notification sound...');
-        playNotificationSound();
-
-        // Enhanced toast with process details and permanent display
-        const processInfo = data.process ? ` in **${data.process}**` : '';
-        const message = `🔔 **NEW UPDATE POSTED!**${processInfo} by ${data.name || 'Unknown'}. Check it out now!`;
-        console.log('🍞 Showing toast notification:', message);
-        showToast(message, 'permanent'); // Permanent notification with close button
-    });
-
-    // Handle unread count updates
-    socket.on('unread_count', function(data) {
-        updateUnreadCounterEnhanced(data.count);
-    });
-
-    // Handle notifications
-    socket.on('notification', function(data) {
-        console.log('📬 Notification received via Socket.IO:', data);
-        console.log('📋 Notification type:', data.type, 'Message:', data.message);
-
-        addNotification({
-            ...data,
-            timestamp: data.timestamp || new Date().toISOString(),
-            unread: true
-        });
-
-        console.log('🔊 Playing notification sound for notification...');
-        playNotificationSound();
-
-        // Show enhanced toast for different types
-        if (data.type === 'new_sop') {
-            console.log('📋 Showing SOP notification toast');
-            showToast('📋 ' + data.message, 'permanent');
-        } else if (data.type === 'new_lesson') {
-            console.log('🎓 Showing lesson notification toast');
-            showToast('🎓 ' + data.message, 'permanent');
-        } else {
-            console.log('🔔 Showing generic notification toast');
-            showToast('🔔 ' + data.message, 'permanent');
-        }
-    });
-
-    // Handle successful operations
-    socket.on('success', function(data) {
-        showToast(`✅ ${data.message}`);
-    });
-
-    // Handle errors
-    socket.on('error', function(data) {
-        showToast(`❌ ${data.message}`);
-    });
-
-    // Handle info messages
-    socket.on('info', function(data) {
-        showToast(`ℹ️ ${data.message}`);
-    });
-
-    // Handle read count updates from mark_as_read
-    socket.on('read_count_updated', function(data) {
-        console.log('📊 Read count updated:', data);
-        // Update the read count display if there's an element to update
-        const readCountElement = document.querySelector(`[data-update-id="${data.update_id}"] .read-count`);
-        if (readCountElement) {
-            readCountElement.textContent = `📖 ${data.read_count} reads`;
-        }
-    });
-
-    // Subscribe to updates
-    console.log('📡 Subscribing to real-time updates...');
-    socket.emit('subscribe_to_updates');
-
-    // Handle subscription confirmation
-    socket.on('subscribed', function(data) {
-        console.log('✅ Successfully subscribed to updates:', data);
+        console.log('📦 Update data - ID:', data.id, 'Name:', data.name, 'Process:', data.process);
+        showUpdateToast(data);
     });
 
     socket.on('connected', function(data) {
@@ -879,16 +595,30 @@ window.notifications = {
     toggle: toggleNotifications,
     markAllAsRead: markAllAsRead,
     add: addNotification,
-    getUnreadCount: () => unreadCount,
-    testConnection: testSocketConnection,
-    forcePollingFallback: forcePollingFallback
+    getUnreadCount: () => unreadCount
 };
 
 // Make functions globally available
 window.toggleNotifications = toggleNotifications;
 window.markAllAsRead = markAllAsRead;
 window.toggleNotificationSound = toggleNotificationSound;
-window.testSocketConnection = testSocketConnection;
-window.forcePollingFallback = forcePollingFallback;
+
+// Test function for notification sound (for debugging)
+window.testNotificationSound = function() {
+    console.log('🧪 Testing notification sound...');
+    playNotificationSound();
+};
+
+// Test function for complete notification system (for debugging)
+window.testNotificationSystem = function() {
+    console.log('🧪 Testing complete notification system...');
+    const testUpdate = {
+        id: 'test-' + Date.now(),
+        name: 'Test User',
+        process: 'ABC',
+        timestamp: new Date().toISOString()
+    };
+    showUpdateToast(testUpdate);
+};
 
 
