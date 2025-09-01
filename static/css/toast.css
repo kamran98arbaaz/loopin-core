@@ -1,0 +1,108 @@
+.toast-notification {
+    position: fixed;
+    bottom: 24px;
+    right: -100%; /* Start offscreen */
+    background: rgba(32, 32, 32, 0.95);
+    border-radius: 8px;
+    padding: 16px;
+    min-width: 320px;
+    max-width: 380px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    transition: right 0.3s ease-in-out;
+    z-index: 9999;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); /* For Safari support */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    visibility: hidden;
+}
+
+.toast-notification.show {
+    right: 24px;
+    opacity: 1;
+    visibility: visible;
+}
+
+.toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 9999;
+}
+
+.toast-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    position: relative;
+    padding-right: 20px;
+}
+
+.toast-header strong {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.toast-header small {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    margin-right: auto;
+}
+
+.toast-body {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+    margin-right: 16px;
+}
+
+.toast-close {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    padding: 0;
+    line-height: 1;
+    outline: none;
+}
+
+.toast-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
+.toast-notification:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 480px) {
+    .toast-notification {
+        min-width: auto;
+        max-width: calc(100vw - 48px);
+        margin: 0 12px;
+    }
+    
+    .toast-notification.show {
+        right: 12px;
+    }
+}

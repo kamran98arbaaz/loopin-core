@@ -1821,12 +1821,19 @@ def create_app(config_name=None):
 
     @app.route("/api/recent-updates")
     def recent_updates():
-        """Get updates from the past 24 hours for the bell icon banner."""
+        """Get recent updates for toast notifications with optional timestamp filtering."""
         try:
-            # Calculate 24 hours ago
-            twenty_four_hours_ago = get_hours_ago(24)
+            # Get the since parameter (milliseconds since epoch)
+            since_ts = request.args.get('since')
+            
+            if since_ts:
+                # Convert milliseconds to datetime
+                since_datetime = datetime.fromtimestamp(int(since_ts)/1000.0, pytz.UTC)
+            else:
+                # Default to last 24 hours if no timestamp provided
+                since_datetime = get_hours_ago(24)
 
-            # Use more efficient query with explicit column selection for free tier optimization
+            # Use more efficient query with explicit column selection
             recent_updates = db.session.query(
                 Update.id,
                 Update.name,
@@ -1834,7 +1841,7 @@ def create_app(config_name=None):
                 Update.message,
                 Update.timestamp
             ).filter(
-                Update.timestamp >= twenty_four_hours_ago
+                Update.timestamp >= since_datetime
             ).order_by(Update.timestamp.desc()).limit(10).all()
 
             if not recent_updates:
