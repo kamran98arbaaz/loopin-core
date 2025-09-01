@@ -1,5 +1,4 @@
 Flask==2.3.3
-Flask-SocketIO==5.3.6
 Flask-Login==0.6.3
 Flask-Migrate==4.1.0
 Flask-SQLAlchemy==3.0.5
@@ -7,8 +6,6 @@ psycopg2-binary==2.9.10
 SQLAlchemy==2.0.30
 alembic==1.16.4
 python-dotenv==1.1.1
-python-socketio==5.10.0
-python-engineio==4.8.0
 eventlet==0.33.3
 pytz==2025.2
 requests==2.32.4

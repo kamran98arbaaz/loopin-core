@@ -11,41 +11,8 @@
   ],
   "headers": [
     {
-      "source": "/socket.io/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, OPTIONS"
-        },
-        {
-          "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization"
-        },
-        {
-          "key": "Access-Control-Allow-Credentials",
-          "value": "true"
-        }
-      ]
-    },
-    {
       "source": "/(.*)",
       "headers": [
-        {
-          "key": "X-SocketIO-Support",
-          "value": "enabled"
-        },
-        {
-          "key": "X-WebSocket-Support",
-          "value": "disabled"
-        },
-        {
-          "key": "X-Transport-Support",
-          "value": "polling"
-        }
       ]
     }
   ],

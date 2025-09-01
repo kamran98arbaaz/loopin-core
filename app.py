@@ -41,7 +41,7 @@ from flask_migrate import Migrate
 from read_logs import bp as read_logs_bp
 from flask_login import LoginManager, login_required
 from models import User, Update, ReadLog, SOPSummary, LessonLearned, ActivityLog, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
-from extensions import db, socketio
+from extensions import db
 from database import db_session
 from role_decorators import admin_required, editor_required, writer_required, delete_required, export_required, get_user_role_info
 from timezone_utils import UTC, IST, now_utc, to_utc, to_ist, format_ist, ensure_timezone, is_within_hours, get_hours_ago
@@ -277,49 +277,6 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
 
-    # Initialize Socket.IO with Vercel-optimized configuration for toast notifications
-    socketio_kwargs = {
-        'cors_allowed_origins': '*',
-        'ping_timeout': 30000,  # Increased for serverless stability
-        'ping_interval': 20000,  # Reduced to prevent timeout issues
-        'async_mode': 'threading',
-        'transports': ['polling'],  # Force polling only for Vercel
-        'allow_upgrades': False,  # Disable WebSocket upgrades
-        'cookie': False,  # Disable cookies for serverless
-        'path': '/socket.io',
-        'compression': False,  # Disable compression for serverless
-        'connect_timeout': 15000,  # Increased connection timeout
-        'close_timeout': 5000,   # Increased close timeout
-        'max_connections': 50,   # Reduced for serverless limits
-        'max_http_connections': 25,  # Reduced for serverless limits
-        # Serverless-specific settings
-        'manage_session': False,  # Disable session management for serverless
-        'always_connect': False,  # Don't force connections
-        'force_new': True,  # Force new connections
-        'reconnection': True,
-        'reconnection_attempts': 3,  # Limited reconnection attempts
-        'reconnection_delay': 2000,  # Delay between reconnections
-        'timeout': 10000,  # Socket timeout
-        # Memory optimization for serverless
-        'max_http_buffer_size': 1000000,  # 1MB limit
-        'http_compression': False,  # Disable HTTP compression
-        'per_message_deflate': False,  # Disable per-message deflate
-    }
-
-    # Initialize Socket.IO blueprint for toast notifications
-    try:
-        from api.socketio import bp as socketio_bp
-        app.register_blueprint(socketio_bp)
-        if os.getenv("FLASK_ENV") == "development":
-            print("SUCCESS: Socket.IO blueprint registered for toast notifications")
-    except Exception as e:
-        logger.error(f"Socket.IO blueprint registration failed: {e}")
-        if os.getenv("FLASK_ENV") == "development":
-            print(f"WARNING: Socket.IO blueprint registration failed: {e}")
-        pass
-
-    # Initialize Socket.IO with the optimized configuration
-    socketio.init_app(app, **socketio_kwargs)
     
 
     app.register_blueprint(read_logs_bp)
@@ -347,8 +304,6 @@ def create_app(config_name=None):
     app.secret_key = os.getenv("FLASK_SECRET_KEY", "replace-this-with-a-secure-random-string")
     app.config["APP_NAME"] = "LoopIn"
 
-    # CORS configuration for Socket.IO
-    app.config["CORS_HEADERS"] = "Content-Type"
 
     # Secure session configuration - adjust for Vercel
     is_production = os.getenv("FLASK_ENV") == "production"
@@ -1302,19 +1257,6 @@ def create_app(config_name=None):
                 # Log activity
                 log_activity('created', 'update', new_update.id, f"Update: {message[:50]}...")
 
-                # Broadcast update notification for toast
-                try:
-                    from api.socketio import broadcast_update
-                    update_data = {
-                        'id': new_update.id,
-                        'name': new_update.name,
-                        'process': new_update.process,
-                        'message': new_update.message,
-                        'timestamp': new_update.timestamp.isoformat()
-                    }
-                    broadcast_update(update_data, selected_process)
-                except Exception as e:
-                    logger.error(f"Socket.IO broadcast failed: {e}")
 
 
             except Exception as e:
@@ -3074,16 +3016,12 @@ def create_app(config_name=None):
                     response.headers['Cache-Control'] = 'public, max-age=31536000'  # 1 year
                     response.headers['Expires'] = (datetime.utcnow() + timedelta(days=365)).strftime('%a, %d %b %Y %H:%M:%S GMT')
 
-        # Socket.IO CORS is handled by the Socket.IO extension, don't override here
 
         # Add Vercel-specific headers (only essential ones in production)
         is_production = os.getenv("FLASK_ENV") == "production"
         is_development = os.getenv("FLASK_ENV") == "development" or not is_production
 
         # Essential headers for all environments
-        response.headers['X-SocketIO-Support'] = 'enabled'
-        response.headers['X-WebSocket-Support'] = 'enabled'
-        response.headers['X-Transport-Support'] = 'websocket,polling'
         response.headers['X-Server-Version'] = 'LoopIn-v1.0'
 
         # Add debug headers only in development
@@ -3091,7 +3029,6 @@ def create_app(config_name=None):
             response.headers['X-Debug-Mode'] = 'true'
             response.headers['X-Timestamp'] = now_utc().isoformat()
             response.headers['X-Status'] = 'healthy'
-            response.headers['X-SocketIO-Version'] = '4.7.2'
 
         return response
 
@@ -3144,15 +3081,6 @@ def create_app(config_name=None):
         except:
             pass
 
-    # Socket.IO error handler
-    @socketio.on_error
-    def handle_socketio_error(e):
-        """Handle Socket.IO errors"""
-        logger.error(f"Socket.IO error: {e}")
-        try:
-            db.session.rollback()
-        except:
-            pass
 
     # Logging setup removed for Vercel deployment
 

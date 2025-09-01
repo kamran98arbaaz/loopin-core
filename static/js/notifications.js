@@ -1,5 +1,4 @@
 // Clean Toast Notifications System
-let socket;
 let notifications = [];
 let unreadCount = 0;
 let shownToasts = new Set(); // Track shown toasts to prevent duplicates
@@ -22,8 +21,44 @@ function debounce(func, wait) {
     };
 }
 
-// Initialize Socket.IO connection for toast notifications
-function initializeSocketIO() {
+// Start polling for new updates
+function startPollingForUpdates() {
+    console.log('🔄 Starting polling for new updates...');
+
+    // Poll every 30 seconds for new updates
+    setInterval(() => {
+        checkForNewUpdates();
+    }, 30000);
+
+    // Initial check
+    checkForNewUpdates();
+
+    console.log('✅ Polling started - checking every 30 seconds');
+}
+
+// Check for new updates via polling
+function checkForNewUpdates() {
+    fetch('/api/recent-updates')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.updates && data.updates.length > 0) {
+                const latestUpdate = data.updates[0];
+                const lastShownUpdateId = localStorage.getItem('lastShownUpdateId');
+
+                if (!lastShownUpdateId || latestUpdate.id !== lastShownUpdateId) {
+                    console.log('🔔 New update detected via polling:', latestUpdate.id);
+                    showUpdateToast(latestUpdate);
+                    localStorage.setItem('lastShownUpdateId', latestUpdate.id);
+                }
+            }
+        })
+        .catch(error => {
+            console.log('Polling failed:', error);
+        });
+}
+
+// Initialize polling-based notification system
+function initializePollingNotifications() {
     console.log('🔌 Initializing Socket.IO for toast notifications...');
 
     if (typeof io !== 'undefined') {
@@ -104,8 +139,8 @@ function initializeToastNotifications() {
     console.log('🍞 Initializing toast notification system...');
 
     try {
-        // Initialize Socket.IO for toast notifications
-        initializeSocketIO();
+        // Initialize polling-based notification system
+        initializePollingNotifications();
 
         // Load existing notifications from localStorage
         loadNotificationsFromStorage();
@@ -121,52 +156,6 @@ function initializeToastNotifications() {
     }
 }
 
-// Fallback mode when Socket.IO fails completely
-function initializeFallbackMode() {
-    console.log('🔄 Initializing fallback mode without Socket.IO...');
-
-    // Load existing notifications from localStorage
-    loadNotificationsFromStorage();
-
-    // Update UI
-    updateUnreadCounterEnhanced(unreadCount);
-
-    // Set up periodic polling as fallback (less frequent)
-    setInterval(() => {
-        checkForNewUpdatesFallback();
-    }, 300000); // Check every 5 minutes instead of every 30 seconds
-
-    console.log('✅ Fallback mode initialized - using periodic polling');
-}
-
-// Fallback function to check for new updates when Socket.IO is unavailable
-function checkForNewUpdatesFallback() {
-    fetch('/api/recent-updates')
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.updates && data.updates.length > 0) {
-                // Check if we have any new updates we haven't shown
-                const latestUpdate = data.updates[0];
-                const lastShownUpdateId = localStorage.getItem('lastShownUpdateId');
-
-                if (!lastShownUpdateId || latestUpdate.id !== lastShownUpdateId) {
-                    // Show toast for the latest update
-                    showUpdateToast({
-                        id: latestUpdate.id,
-                        name: latestUpdate.name,
-                        process: latestUpdate.process,
-                        timestamp: latestUpdate.timestamp
-                    });
-
-                    // Store the ID to prevent duplicate toasts
-                    localStorage.setItem('lastShownUpdateId', latestUpdate.id);
-                }
-            }
-        })
-        .catch(error => {
-            console.log('Fallback polling failed:', error);
-        });
-}
 
 // Add a new notification
 function addNotification(notification) {
