@@ -4,6 +4,11 @@ let notifications = [];
 let unreadCount = 0;
 let shownToasts = new Set(); // Track shown toasts to prevent duplicates
 
+// Connection error handling variables (declared at top to avoid hoisting issues)
+let connectionErrorToast = null;
+let connectionErrorCount = 0;
+let lastConnectionErrorTime = 0;
+
 // Performance optimization: Debounce function
 function debounce(func, wait) {
     let timeout;
@@ -31,21 +36,61 @@ function initializeSocketIO() {
 
         console.log('🔗 Connecting to:', socketUrl);
 
-        // Simple configuration for toast notifications
+        // Detect Vercel environment
+        const isVercel = host.includes('vercel.app') ||
+                        host.includes('now.sh') ||
+                        window.location.hostname.includes('vercel') ||
+                        document.querySelector('meta[name="generator"][content*="Vercel"]') !== null;
+
+        console.log('🌐 Environment detected:', isVercel ? 'Vercel' : 'Other');
+
+        // Vercel-optimized configuration for toast notifications
         const socketConfig = {
-            timeout: 20000,
-            forceNew: true,
+            timeout: 15000,  // Match server timeout
+            forceNew: true,  // Force new connection
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000,
+            reconnectionAttempts: 3,  // Limited attempts for serverless
+            reconnectionDelay: 2000,  // Delay between attempts
+            reconnectionDelayMax: 5000,
+            randomizationFactor: 0.5,
             secure: window.location.protocol === 'https:',
+            rejectUnauthorized: false,
             path: '/socket.io',
-            transports: ['polling'],
-            allowUpgrades: false
+            transports: ['polling'],  // Force polling only
+            allowUpgrades: false,  // Disable upgrades
+            cookie: false,  // Disable cookies
+            // Serverless-specific settings
+            autoConnect: true,
+            closeOnBeforeunload: false,
+            retries: 2,
+            // Performance optimizations
+            perMessageDeflate: false,  // Disable compression
+            httpCompression: false,
+            forceBase64: false,
+            // Connection stability
+            pingTimeout: 30000,  // Match server ping timeout
+            pingInterval: 20000,  // Match server ping interval
+            upgrade: false,  // Disable upgrade attempts
+            rememberUpgrade: false,
+            // Additional stability settings
+            extraHeaders: {
+                'Cache-Control': 'no-cache',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         };
 
+        // Vercel-specific adjustments
+        if (isVercel) {
+            socketConfig.pingTimeout = 30000;
+            socketConfig.pingInterval = 20000;
+            socketConfig.forceBase64 = true;  // Force base64 for Vercel
+            socketConfig.timestampRequests = true;
+            socketConfig.timestampParam = 't';
+            console.log('⚡ Using Vercel-optimized Socket.IO settings');
+        }
+
         socket = io(socketUrl, socketConfig);
-        console.log('🔧 Socket.IO connection configured');
+        console.log('🔧 Socket.IO connection configured for serverless environment');
 
         // Attach event handlers
         attachSocketEventHandlers();
@@ -58,14 +103,69 @@ function initializeSocketIO() {
 function initializeToastNotifications() {
     console.log('🍞 Initializing toast notification system...');
 
-    // Initialize Socket.IO for toast notifications
-    initializeSocketIO();
+    try {
+        // Initialize Socket.IO for toast notifications
+        initializeSocketIO();
+
+        // Load existing notifications from localStorage
+        loadNotificationsFromStorage();
+
+        // Update UI
+        updateUnreadCounterEnhanced(unreadCount);
+
+        console.log('✅ Toast notification system initialized successfully');
+    } catch (error) {
+        console.error('❌ Failed to initialize toast notification system:', error);
+        // Fallback: Initialize without Socket.IO
+        initializeFallbackMode();
+    }
+}
+
+// Fallback mode when Socket.IO fails completely
+function initializeFallbackMode() {
+    console.log('🔄 Initializing fallback mode without Socket.IO...');
 
     // Load existing notifications from localStorage
     loadNotificationsFromStorage();
 
     // Update UI
     updateUnreadCounterEnhanced(unreadCount);
+
+    // Set up periodic polling as fallback (less frequent)
+    setInterval(() => {
+        checkForNewUpdatesFallback();
+    }, 300000); // Check every 5 minutes instead of every 30 seconds
+
+    console.log('✅ Fallback mode initialized - using periodic polling');
+}
+
+// Fallback function to check for new updates when Socket.IO is unavailable
+function checkForNewUpdatesFallback() {
+    fetch('/api/recent-updates')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.updates && data.updates.length > 0) {
+                // Check if we have any new updates we haven't shown
+                const latestUpdate = data.updates[0];
+                const lastShownUpdateId = localStorage.getItem('lastShownUpdateId');
+
+                if (!lastShownUpdateId || latestUpdate.id !== lastShownUpdateId) {
+                    // Show toast for the latest update
+                    showUpdateToast({
+                        id: latestUpdate.id,
+                        name: latestUpdate.name,
+                        process: latestUpdate.process,
+                        timestamp: latestUpdate.timestamp
+                    });
+
+                    // Store the ID to prevent duplicate toasts
+                    localStorage.setItem('lastShownUpdateId', latestUpdate.id);
+                }
+            }
+        })
+        .catch(error => {
+            console.log('Fallback polling failed:', error);
+        });
 }
 
 // Add a new notification
@@ -573,10 +673,52 @@ function initializeSoundToggle() {
 function attachSocketEventHandlers() {
     socket.on('connect', function() {
         console.log('✅ Connected to Socket.IO for toast notifications');
+        console.log('🔗 Socket ID:', socket.id);
+        console.log('🌐 Transport:', socket.io.engine.transport ? socket.io.engine.transport.name : 'unknown');
+
+        // Clear any previous connection error toasts
+        clearConnectionErrorToast();
     });
 
-    socket.on('disconnect', function() {
-        console.log('❌ Disconnected from Socket.IO');
+    socket.on('disconnect', function(reason) {
+        console.log('❌ Disconnected from Socket.IO - Reason:', reason);
+
+        // Show connection error toast for unexpected disconnects
+        if (reason === 'io server disconnect' || reason === 'io client disconnect') {
+            console.log('🔄 Connection closed by server/client, will attempt reconnection');
+        } else {
+            showConnectionErrorToast();
+        }
+    });
+
+    socket.on('connect_error', function(error) {
+        console.error('🚫 Socket.IO connection error:', error);
+        console.error('Error details:', {
+            type: error.type,
+            description: error.description,
+            context: error.context
+        });
+
+        // Show connection error toast
+        showConnectionErrorToast();
+    });
+
+    socket.on('reconnect', function(attemptNumber) {
+        console.log('🔄 Socket.IO reconnected after', attemptNumber, 'attempts');
+        clearConnectionErrorToast();
+    });
+
+    socket.on('reconnect_attempt', function(attemptNumber) {
+        console.log('🔄 Socket.IO reconnection attempt', attemptNumber);
+    });
+
+    socket.on('reconnect_error', function(error) {
+        console.error('🚫 Socket.IO reconnection error:', error);
+    });
+
+    socket.on('reconnect_failed', function() {
+        console.error('❌ Socket.IO reconnection failed permanently');
+        showConnectionErrorToast();
     });
 
     socket.on('new_update', function(data) {
@@ -587,6 +729,10 @@ function attachSocketEventHandlers() {
 
     socket.on('connected', function(data) {
         console.log('🔗 Socket.IO connection confirmed:', data);
+    });
+
+    socket.on('error', function(error) {
+        console.error('🚫 Socket.IO error:', error);
     });
 }
 
@@ -602,12 +748,69 @@ window.notifications = {
 window.toggleNotifications = toggleNotifications;
 window.markAllAsRead = markAllAsRead;
 window.toggleNotificationSound = toggleNotificationSound;
+window.testNotificationSound = testNotificationSound;
+window.forceSocketReconnect = forceSocketReconnect;
 
 // Test function for notification sound (for debugging)
 window.testNotificationSound = function() {
     console.log('🧪 Testing notification sound...');
     playNotificationSound();
 };
+
+// Connection error handling for Vercel stability
+function showConnectionErrorToast() {
+    const now = Date.now();
+
+    // Check if we already have an active error toast to prevent piling
+    if (connectionErrorToast && document.body.contains(connectionErrorToast)) {
+        return;
+    }
+
+    // Only show error toast if it's been more than 30 seconds since last error
+    if (now - lastConnectionErrorTime < 30000) {
+        return;
+    }
+
+    lastConnectionErrorTime = now;
+    connectionErrorCount++;
+
+    // Only show error toast after 2 failed attempts (less aggressive than before)
+    if (connectionErrorCount >= 2) {
+        // Double-check and clear any existing toasts before creating new one
+        clearConnectionErrorToast();
+
+        connectionErrorToast = showToast(
+            '⚠️ Real-time connection lost. Using offline mode.',
+            'permanent'
+        );
+    }
+}
+
+function clearConnectionErrorToast() {
+    if (connectionErrorToast) {
+        closeToast(connectionErrorToast);
+        connectionErrorToast = null;
+    }
+}
+
+// Clear all connection error toasts from DOM to prevent piling
+function clearAllConnectionErrorToasts() {
+    // Find all toasts with the connection error message
+    const errorToasts = document.querySelectorAll('.toast');
+
+    errorToasts.forEach(toast => {
+        const toastContent = toast.querySelector('.toast-content') || toast;
+        if (toastContent && toastContent.innerHTML &&
+            toastContent.innerHTML.includes('Real-time connection lost')) {
+            closeToast(toast);
+        }
+    });
+
+    // Also clear the tracked toast reference
+    if (connectionErrorToast) {
+        connectionErrorToast = null;
+    }
+}
 
 // Test function for complete notification system (for debugging)
 window.testNotificationSystem = function() {
@@ -619,6 +822,49 @@ window.testNotificationSystem = function() {
         timestamp: new Date().toISOString()
     };
     showUpdateToast(testUpdate);
+};
+
+// Test Socket.IO connection status (for debugging)
+window.testSocketConnection = function() {
+    console.log('🧪 Testing Socket.IO connection...');
+
+    if (!socket) {
+        console.error('❌ Socket.IO not initialized');
+        return;
+    }
+
+    console.log('Socket.IO status:', {
+        connected: socket.connected,
+        disconnected: socket.disconnected,
+        id: socket.id,
+        transport: socket.io?.engine?.transport?.name || 'unknown',
+        readyState: socket.io?.engine?.readyState || 'unknown'
+    });
+
+    if (socket.connected) {
+        console.log('✅ Socket.IO is connected');
+        socket.emit('test_connection', {
+            message: 'Test from browser',
+            timestamp: new Date().toISOString()
+        });
+    } else {
+        console.log('❌ Socket.IO is not connected');
+    }
+};
+
+// Force reconnect Socket.IO (for debugging)
+window.forceSocketReconnect = function() {
+    console.log('🔄 Forcing Socket.IO reconnection...');
+
+    if (socket) {
+        socket.disconnect();
+        setTimeout(() => {
+            socket.connect();
+        }, 1000);
+    } else {
+        console.log('❌ Socket.IO not initialized, reinitializing...');
+        initializeSocketIO();
+    }
 };
 
 

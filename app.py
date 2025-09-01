@@ -277,29 +277,39 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     login_manager.init_app(app)
 
-    # Initialize Socket.IO with minimal configuration for toast notifications
+    # Initialize Socket.IO with Vercel-optimized configuration for toast notifications
     socketio_kwargs = {
         'cors_allowed_origins': '*',
-        'ping_timeout': 20000,
-        'ping_interval': 25000,
+        'ping_timeout': 30000,  # Increased for serverless stability
+        'ping_interval': 20000,  # Reduced to prevent timeout issues
         'async_mode': 'threading',
-        'transports': ['polling'],
-        'allow_upgrades': False,
-        'cookie': False,
+        'transports': ['polling'],  # Force polling only for Vercel
+        'allow_upgrades': False,  # Disable WebSocket upgrades
+        'cookie': False,  # Disable cookies for serverless
         'path': '/socket.io',
-        'compression': True,
-        'compression_threshold': 2048,
-        'connect_timeout': 8000,
-        'close_timeout': 3000,
-        'max_connections': 100,
-        'max_http_connections': 50
+        'compression': False,  # Disable compression for serverless
+        'connect_timeout': 15000,  # Increased connection timeout
+        'close_timeout': 5000,   # Increased close timeout
+        'max_connections': 50,   # Reduced for serverless limits
+        'max_http_connections': 25,  # Reduced for serverless limits
+        # Serverless-specific settings
+        'manage_session': False,  # Disable session management for serverless
+        'always_connect': False,  # Don't force connections
+        'force_new': True,  # Force new connections
+        'reconnection': True,
+        'reconnection_attempts': 3,  # Limited reconnection attempts
+        'reconnection_delay': 2000,  # Delay between reconnections
+        'timeout': 10000,  # Socket timeout
+        # Memory optimization for serverless
+        'max_http_buffer_size': 1000000,  # 1MB limit
+        'http_compression': False,  # Disable HTTP compression
+        'per_message_deflate': False,  # Disable per-message deflate
     }
 
     # Initialize Socket.IO blueprint for toast notifications
     try:
-        from api.socketio import bp as socketio_bp, init_socketio
+        from api.socketio import bp as socketio_bp
         app.register_blueprint(socketio_bp)
-        init_socketio(socketio, app)
         if os.getenv("FLASK_ENV") == "development":
             print("SUCCESS: Socket.IO blueprint registered for toast notifications")
     except Exception as e:
@@ -308,6 +318,7 @@ def create_app(config_name=None):
             print(f"WARNING: Socket.IO blueprint registration failed: {e}")
         pass
 
+    # Initialize Socket.IO with the optimized configuration
     socketio.init_app(app, **socketio_kwargs)
     
 
