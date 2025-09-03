@@ -132,26 +132,3 @@ def get_stats():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-def is_redis_configured():
-    """Check if Redis is configured"""
-    return bool(os.getenv("REDIS_URL"))
-
-def is_redis_healthy():
-    """Check Redis health"""
-    try:
-        redis_url = os.getenv("REDIS_URL")
-        if not redis_url:
-            return False
-
-        try:
-            import redis
-        except ImportError:
-            # Redis package not available
-            return False
-
-        r = redis.from_url(redis_url)
-        r.ping()
-        return True
-    except Exception:
-        return False

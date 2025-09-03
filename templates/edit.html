@@ -152,6 +152,30 @@
     color: var(--primary-600);
   }
 
+  /* Ensure logout button matches header styling */
+  .logout-btn {
+    background: transparent !important;
+    color: var(--primary-600) !important;
+    border: 2px solid var(--primary-600) !important;
+    padding: var(--space-3) var(--space-4) !important;
+    border-radius: var(--radius-lg) !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    text-decoration: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: var(--space-2) !important;
+    transition: all var(--transition-fast) !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+  }
+
+  .logout-btn:hover {
+    background: var(--primary-600) !important;
+    color: white !important;
+    transform: translateY(-2px) !important;
+  }
+
   @media (max-width: 768px) {
     .edit-container {
       padding: var(--space-6) var(--space-4);

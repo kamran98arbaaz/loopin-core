@@ -29,17 +29,17 @@
      high-specificity selectors so earlier conflicting rules are overridden.
      NOTE: intentionally exclude .tile and .tile-action so home page tiles
      retain their own visual sizing. */
-  --btn-font-size: 0.9rem; /* slightly smaller (≈14.4px) */
-  --btn-padding-vert: 0.4rem;
-  --btn-padding-horiz: 0.85rem;
-  --btn-min-height: 36px; /* slightly smaller tappable area */
+  --btn-font-size: 0.765rem; /* 0.9rem * 0.85 */
+  --btn-padding-vert: 0.34rem; /* 0.4rem * 0.85 */
+  --btn-padding-horiz: 0.7225rem; /* 0.85rem * 0.85 */
+  --btn-min-height: 30.6px; /* 36px * 0.85 */
   --btn-border-radius: var(--radius);
   --btn-font-weight: 500;
 }
 
-/* ====== Reset & Base ====== */
+/* ====== Reset & Base - Reduced by 15% for 14-inch screens ====== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; scroll-behavior: smooth; }
+html { font-size: 13.6px; scroll-behavior: smooth; } /* 16px * 0.85 */
 body {
   font-family: 'Roboto', 'Inter', Arial, sans-serif;
   background: var(--color-bg);
@@ -53,25 +53,25 @@ body, h1, h2, h3, h4, h5, h6, p, label, input, textarea, select, .tile, .panel, 
   color: #1a1a1a !important;
 }
 
-/* ====== Layout ====== */
+/* ====== Layout - Reduced by 15% for 14-inch screens ====== */
 .container {
-  max-width: 960px;
-  margin: 2rem auto;
-  padding: 0 1rem;
+  max-width: 816px; /* 960px * 0.85 */
+  margin: 1.7rem auto; /* 2rem * 0.85 */
+  padding: 0 0.85rem; /* 1rem * 0.85 */
 }
 
-/* ====== Navbar ====== */
+/* ====== Navbar - Reduced by 15% ====== */
 .navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 0;
+  padding: 0.85rem 0; /* 1rem * 0.85 */
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 2rem;
+  margin-bottom: 1.7rem; /* 2rem * 0.85 */
 }
 .site-logo a {
-  font-size: 1.7rem;
+  font-size: 1.445rem; /* 1.7rem * 0.85 */
   font-weight: 700;
   color: var(--color-primary);
   text-decoration: none;
@@ -209,16 +209,7 @@ form input:focus, form select:focus, form textarea:focus {
 .flash-error { background: #f8d7da; color: #721c24; }
 
 /* ====== Modal ====== */
-.modal-overlay {
-  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0,0,0,0.5); z-index: 1000;
-  display: flex; align-items: center; justify-content: center;
-}
-.modal-content {
-  background: #fff; padding: 1.5rem; border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 320px; text-align: center;
-}
-.modal-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+/* Modal definitions consolidated - removed duplicates */
 
 /* ====== Utility ====== */
 .hidden { display: none !important; }
@@ -232,19 +223,19 @@ form input:focus, form select:focus, form textarea:focus {
   .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); }
 }
 
-/* ====== Tiles ====== */
+/* ====== Tiles - Reduced by 15% ====== */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-  margin-top: 40px;
+  grid-template-columns: repeat(auto-fit, minmax(204px, 1fr)); /* 240px * 0.85 */
+  gap: 17px; /* 20px * 0.85 */
+  margin-top: 34px; /* 40px * 0.85 */
 }
 .tile {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  height: 180px;
+  height: 153px; /* 180px * 0.85 */
   background: #fafafa;
   border: 1px solid #e5e7eb;
   border-radius: var(--radius);
@@ -257,8 +248,8 @@ form input:focus, form select:focus, form textarea:focus {
   transform: translateY(-4px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
-.tile h2 { margin-bottom: 8px; font-size: 1.3em; color: #111 !important; }
-.tile p { text-align: center; padding: 0 10px; color: #555; }
+.tile h2 { margin-bottom: 6.8px; font-size: 1.105em; color: #111 !important; } /* 8px * 0.85, 1.3em * 0.85 */
+.tile p { text-align: center; padding: 0 8.5px; color: #555; } /* 10px * 0.85 */
 .button-group button:hover {
   background: #2658c7;
 }
@@ -828,112 +819,7 @@ form button:hover {
   display: block;
 }
 
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 24px;
-  background-color: #f5f5f5;
-}
-
-.navbar-left .site-logo a {
-  font-size: 1.5em;
-  font-weight: bold;
-  text-decoration: none;
-  color: #333;
-}
-
-.navbar-right {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.button {
-  padding: 6px 12px;
-  background-color: #007BFF;
-  color: white;
-  text-decoration: none;
-  border: none;
-  border-radius: 4px;
-}
-
-.button:hover {
-  background-color: #0056b3;
-}
-
-.welcome {
-  margin-right: 10px;
-  font-weight: 500;
-}
-
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 24px;
-  background-color: #f5f5f5;
-}
-
-.navbar-center {
-  flex: 1;
-  text-align: center;
-}
-
-.site-logo a {
-  font-size: 1.5em;
-  font-weight: bold;
-  text-decoration: none;
-  color: #333;
-}
-
-.navbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 24px;
-  background-color: #f5f5f5;
-  flex-wrap: wrap;
-  position: relative;
-}
-
-.navbar-left,
-.navbar-right {
-  flex: 1;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.navbar-center {
-  flex: 1;
-  text-align: center;
-}
-
-.site-logo a {
-  font-size: 1.5em;
-  font-weight: bold;
-  text-decoration: none;
-  color: #007BFF;
-}
-
-.button {
-  padding: 6px 12px;
-  background-color: #007BFF;
-  color: white;
-  text-decoration: none;
-  border-radius: 4px;
-  font-size: 0.9em;
-}
-
-.button:hover {
-  background-color: #0056b3;
-}
-
-.welcome {
-  font-weight: 500;
-  margin-right: 8px;
-}
+/* Navbar consolidated - removed duplicate definitions */
 
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -1109,12 +995,7 @@ body {
   padding: 0;
 }
 
-/* Container to give content breathing room */
-.container {
-  max-width: 980px;
-  margin: 1rem auto;
-  padding: 0.75rem 1rem;
-}
+/* Container consolidated - removed duplicate definitions */
 
 /* Header/navbar with blended background */
 header {
@@ -1328,10 +1209,7 @@ header hr {
 
 /* Toast styling moved to base.html for consistency */
 
-body {
-  background-color: #f5f7fa;
-  background-image: url('https://www.transparenttextures.com/patterns/cubes.png');
-}
+/* Removed external background image that could cause loading delays */
 
 .btn-edit {
   background-color: #007bff; /* blue */

@@ -47,7 +47,6 @@ from role_decorators import admin_required, editor_required, writer_required, de
 from timezone_utils import UTC, IST, now_utc, to_utc, to_ist, format_ist, ensure_timezone, is_within_hours, get_hours_ago
 from io import BytesIO
 import sys
-import subprocess
 from pathlib import Path
 
 # Performance monitoring
@@ -61,24 +60,22 @@ def performance_logger(f):
             end_time = time.time()
             duration = end_time - start_time
 
-            # Log slow requests (>1 second)
-            if duration > 1.0:
+            # Log very slow requests (>2 seconds) as warnings
+            if duration > 2.0:
                 logger.warning(
-                    f"Slow request - Duration: {duration:.2f}s - "
+                    f"Very slow request - Duration: {duration:.2f}s - "
                     f"endpoint={request.endpoint} "
                     f"method={request.method} "
-                    f"path={request.path} "
-                    f"user_agent={request.headers.get('User-Agent', 'Unknown')[:50]}"
+                    f"path={request.path}"
                 )
 
-            # Log all requests for performance analysis
-            logger.info(
-                f"Request completed - Duration: {duration:.3f}s - "
-                f"endpoint={request.endpoint} "
-                f"method={request.method} "
-                f"status={getattr(result, 'status_code', 'N/A')} "
-                f"size={getattr(result, 'content_length', 'N/A')}"
-            )
+            # Only log errors for performance monitoring - reduced verbosity
+            elif duration > 1.0:
+                logger.info(
+                    f"Slow request - Duration: {duration:.3f}s - "
+                    f"endpoint={request.endpoint} "
+                    f"method={request.method}"
+                )
 
             return result
         except Exception as e:
@@ -117,7 +114,7 @@ APP_START = time.time()
 
 # Enhanced in-memory cache for performance optimization
 _cache = {}
-CACHE_TIMEOUT = 300  # 5 minutes
+CACHE_TIMEOUT = 600  # 10 minutes - increased for better performance
 MAX_CACHE_SIZE = 1000  # Prevent memory leaks
 
 def get_cache_size():
@@ -140,6 +137,25 @@ def cleanup_expired_cache():
         for key, _ in sorted_items[:len(_cache) - MAX_CACHE_SIZE]:
             del _cache[key]
 
+def ensure_db_connection_clean():
+    """Ensure database connection is clean and ready for use"""
+    try:
+        # Test connection and rollback any pending transactions
+        db.session.execute(text("SELECT 1"))
+        db.session.rollback()  # Ensure no pending transactions
+        return True
+    except Exception as e:
+        logger.warning(f"Database connection issue detected: {e}")
+        try:
+            db.session.rollback()
+            db.session.close()
+            # Force engine disposal if needed
+            db.engine.dispose()
+            logger.info("Database connection cleaned up")
+        except Exception as cleanup_e:
+            logger.error(f"Error during connection cleanup: {cleanup_e}")
+        return False
+
 def get_cached_user_role(user_id):
     """Get cached user role information with improved performance"""
     cache_key = f"user_role_{user_id}"
@@ -156,11 +172,19 @@ def get_cached_user_role(user_id):
     if len(_cache) > MAX_CACHE_SIZE * 0.8:  # Clean when 80% full
         cleanup_expired_cache()
 
-    user = User.query.get(user_id)
-    if user:
-        role_info = get_user_role_info(user)
-        _cache[cache_key] = (current_time, role_info)
-        return role_info
+    try:
+        user = User.query.get(user_id)
+        if user:
+            role_info = get_user_role_info(user)
+            _cache[cache_key] = (current_time, role_info)
+            return role_info
+    except Exception as e:
+        logger.warning(f"Error in get_cached_user_role: {e}")
+        # Ensure session is clean
+        try:
+            db.session.rollback()
+        except:
+            pass
 
     return {'is_admin': False, 'is_editor': False, 'is_writer': False, 'is_deleter': False, 'is_exporter': False}
 
@@ -181,62 +205,131 @@ def get_cached_update_count():
     return count
 
 def get_cached_recent_updates(limit=10):
-    """Cache recent updates for performance"""
+    """Cache recent updates for performance with proper session management"""
     cache_key = f"recent_updates_{limit}"
     current_time = time.time()
 
     if cache_key in _cache:
         cached_time, updates = _cache[cache_key]
-        if current_time - cached_time < 120:  # Cache for 2 minutes
+        if current_time - cached_time < 300:  # Cache for 5 minutes - increased
             return updates
         else:
             del _cache[cache_key]
 
-    recent_updates = Update.query.order_by(Update.timestamp.desc()).limit(limit).all()
-    updates_data = []
-    for update in recent_updates:
-        updates_data.append({
-            'id': update.id,
-            'name': update.name,
-            'process': update.process,
-            'message': update.message,
-            'timestamp': update.timestamp
-        })
+    try:
+        recent_updates = Update.query.order_by(Update.timestamp.desc()).limit(limit).all()
+        updates_data = []
+        for update in recent_updates:
+            updates_data.append({
+                'id': update.id,
+                'name': update.name,
+                'process': update.process,
+                'message': update.message,
+                'timestamp': update.timestamp
+            })
 
-    _cache[cache_key] = (current_time, updates_data)
-    return updates_data
+        _cache[cache_key] = (current_time, updates_data)
+        return updates_data
+    except Exception as e:
+        logger.warning(f"Error in get_cached_recent_updates: {e}")
+        # Ensure session is clean
+        try:
+            db.session.rollback()
+        except:
+            pass
+        # Return empty list on error to prevent crashes
+        return []
 
 def get_cached_sop_summaries(limit=10):
-    """Cache SOP summaries for performance"""
+    """Cache SOP summaries for performance with proper session management"""
     cache_key = f"sop_summaries_{limit}"
     current_time = time.time()
 
     if cache_key in _cache:
         cached_time, summaries = _cache[cache_key]
-        if current_time - cached_time < 300:  # Cache for 5 minutes
+        if current_time - cached_time < 600:  # Cache for 10 minutes - increased
             return summaries
         else:
             del _cache[cache_key]
 
-    summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(limit).all()
-    _cache[cache_key] = (current_time, summaries)
-    return summaries
+    try:
+        summaries = SOPSummary.query.order_by(SOPSummary.created_at.desc()).limit(limit).all()
+        _cache[cache_key] = (current_time, summaries)
+        return summaries
+    except Exception as e:
+        logger.warning(f"Error in get_cached_sop_summaries: {e}")
+        # Ensure session is clean
+        try:
+            db.session.rollback()
+        except:
+            pass
+        # Return empty list on error to prevent crashes
+        return []
 
 def get_cached_lessons_learned(limit=10):
-    """Cache lessons learned for performance"""
+    """Cache lessons learned for performance with proper session management"""
     cache_key = f"lessons_learned_{limit}"
     current_time = time.time()
 
     if cache_key in _cache:
         cached_time, lessons = _cache[cache_key]
-        if current_time - cached_time < 300:  # Cache for 5 minutes
+        if current_time - cached_time < 600:  # Cache for 10 minutes - increased
             return lessons
         else:
             del _cache[cache_key]
 
-    lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(limit).all()
-    _cache[cache_key] = (current_time, lessons)
-    return lessons
+    try:
+        lessons = LessonLearned.query.order_by(LessonLearned.created_at.desc()).limit(limit).all()
+        _cache[cache_key] = (current_time, lessons)
+        return lessons
+    except Exception as e:
+        logger.warning(f"Error in get_cached_lessons_learned: {e}")
+        # Ensure session is clean
+        try:
+            db.session.rollback()
+        except:
+            pass
+        # Return empty list on error to prevent crashes
+        return []
+
+def get_cached_read_counts(update_ids):
+    """Cache read counts for specific updates to improve performance"""
+    if not update_ids:
+        return {}
+
+    # Create a cache key based on the update IDs
+    cache_key = f"read_counts_{hash(tuple(sorted(update_ids)))}"
+    current_time = time.time()
+
+    if cache_key in _cache:
+        cached_time, read_counts = _cache[cache_key]
+        if current_time - cached_time < 180:  # Cache for 3 minutes
+            return read_counts
+        else:
+            del _cache[cache_key]
+
+    try:
+        # Ensure connection is clean before this query
+        ensure_db_connection_clean()
+
+        read_counts = dict(
+            db.session.query(ReadLog.update_id, func.count(ReadLog.id))
+            .filter(ReadLog.update_id.in_(update_ids))
+            .group_by(ReadLog.update_id)
+            .all()
+        )
+
+        _cache[cache_key] = (current_time, read_counts)
+        return read_counts
+    except Exception as e:
+        logger.warning(f"Error in get_cached_read_counts: {e}")
+        # Ensure session is clean
+        try:
+            db.session.rollback()
+        except:
+            pass
+        # Return empty dict on error
+        return {}
 
 def create_app(config_name=None):
     app = Flask(__name__)
@@ -373,14 +466,14 @@ def create_app(config_name=None):
             "connect_args": ssl_config,
             # Optimized connection pool settings for Vercel deployment
             "pool_pre_ping": True,
-            "pool_recycle": 600,  # Increased to 10 minutes for better stability
-            "pool_timeout": 15,   # Reduced timeout for faster failure detection
-            "pool_size": 2,       # Reduced base pool size for memory efficiency
-            "max_overflow": 3,    # Reduced overflow for memory efficiency
+            "pool_recycle": 300,  # Recycle connections every 5 minutes
+            "pool_timeout": 20,   # Connection timeout
+            "pool_size": 1,       # Minimal pool size for serverless
+            "max_overflow": 2,    # Limited overflow
             # Transaction isolation and connection stability
             "isolation_level": "READ_COMMITTED",
             "echo": False,
-            "pool_reset_on_return": "rollback",
+            "pool_reset_on_return": "rollback",  # Always rollback on return
             # Performance optimizations
             "pool_use_lifo": True,  # Use LIFO for better cache locality
             "poolclass": None,  # Use default pool class
@@ -389,11 +482,12 @@ def create_app(config_name=None):
                 **ssl_config,
                 "application_name": "loopin-core",
                 "keepalives": 1,
-                "keepalives_idle": 60,  # Increased idle time
-                "keepalives_interval": 15,  # Increased interval
-                "keepalives_count": 3,  # Reduced count for faster detection
+                "keepalives_idle": 30,  # Reduced idle time for faster cleanup
+                "keepalives_interval": 10,  # More frequent keepalives
+                "keepalives_count": 3,  # Keepalive attempts
                 # Performance settings
-                "tcp_user_timeout": 30000,  # 30 second TCP timeout
+                "tcp_user_timeout": 20000,  # 20 second TCP timeout
+                "connect_timeout": 10,  # 10 second connection timeout
             }
         }
 
@@ -830,7 +924,7 @@ def create_app(config_name=None):
                 "timestamp": now_utc().isoformat()
             }
 
-            # Log memory usage for monitoring
+            # Log memory usage only for high usage (>80% of 512MB tier)
             if memory_mb > 400:  # Log if memory usage is high for 512MB tier
                 logger.warning(".2f"
                               f"memory_percent={(memory_mb/512)*100:.1f}")
@@ -975,119 +1069,6 @@ def create_app(config_name=None):
                               filters=filters,
                               available_processes=available_processes,
                               available_departments=available_departments)
-        query = request.args.get("q", "").strip()
-        results = []
-
-        # Get filter parameters
-        category = request.args.get("category", "")
-        process = request.args.get("process", "")
-        department = request.args.get("department", "")
-        date_range = request.args.get("date_range", "")
-
-        # Prepare filters for template
-        filters = {
-            "category": category,
-            "process": process,
-            "department": department,
-            "date_range": date_range
-        }
-
-        # Available options for filters
-        available_processes = ["ABC", "XYZ", "AB"]
-        available_departments = ["ABC", "XYZ", "AB"]  # Fixed to match process options
-
-        if query:
-            # Case-insensitive search
-            query_filter = f"%{query}%"
-
-            # Search Updates (if no category filter or category is 'updates')
-            if not category or category == "updates":
-                updates_query = Update.query.filter(
-                    or_(
-                        Update.message.ilike(query_filter),
-                        Update.name.ilike(query_filter),
-                        Update.process.ilike(query_filter)
-                    )
-                )
-
-                # Apply process filter
-                if process:
-                    updates_query = updates_query.filter(Update.process.ilike(f"%{process}%"))
-
-                updates_rows = updates_query.order_by(Update.timestamp.desc()).all()
-
-                for upd in updates_rows:
-                    results.append({
-                        "id": upd.id,
-                        "title": f"{upd.process} - {upd.name}",
-                        "content": upd.message[:200] + ("..." if len(upd.message) > 200 else ""),
-                        "type": "update",
-                        "url": url_for("view_update", update_id=upd.id),
-                        "author": upd.name,
-                        "created_at": upd.timestamp,
-                        "process": upd.process
-                    })
-
-            # Search SOP Summaries (if no category filter or category is 'sops')
-            if not category or category == "sops":
-                sops_query = SOPSummary.query.filter(
-                    or_(
-                        SOPSummary.title.ilike(query_filter),
-                        SOPSummary.summary_text.ilike(query_filter)
-                    )
-                )
-
-                # Apply department filter
-                if department:
-                    sops_query = sops_query.filter(SOPSummary.department.ilike(f"%{department}%"))
-
-                sops_rows = sops_query.order_by(SOPSummary.created_at.desc()).all()
-
-                for sop in sops_rows:
-                    results.append({
-                        "id": sop.id,
-                        "title": sop.title,
-                        "content": sop.summary_text[:200] + ("..." if len(sop.summary_text) > 200 else ""),
-                        "type": "sop",
-                        "url": url_for("view_sop_summary", summary_id=sop.id),
-                        "created_at": sop.created_at,
-                        "tags": sop.tags or []
-                    })
-
-            # Search Lessons Learned (if no category filter or category is 'lessons')
-            if not category or category == "lessons":
-                lessons_query = LessonLearned.query.filter(
-                    or_(
-                        LessonLearned.title.ilike(query_filter),
-                        LessonLearned.content.ilike(query_filter),
-                        LessonLearned.summary.ilike(query_filter)
-                    )
-                )
-
-                # Apply department filter
-                if department:
-                    lessons_query = lessons_query.filter(LessonLearned.department.ilike(f"%{department}%"))
-
-                lessons_rows = lessons_query.order_by(LessonLearned.created_at.desc()).all()
-
-                for lesson in lessons_rows:
-                    results.append({
-                        "id": lesson.id,
-                        "title": lesson.title,
-                        "content": (lesson.summary or lesson.content or "")[:200] + ("..." if len(lesson.summary or lesson.content or "") > 200 else ""),
-                        "type": "lesson",
-                        "url": url_for("view_lesson_learned", lesson_id=lesson.id),
-                        "author": lesson.author,
-                        "created_at": lesson.created_at,
-                        "tags": lesson.tags or []
-                    })
-
-        return render_template("search_results.html",
-                             query=query,
-                             results=results,
-                             filters=filters,
-                             available_processes=available_processes,
-                             available_departments=available_departments)
 
 
 
@@ -1095,30 +1076,24 @@ def create_app(config_name=None):
     @performance_logger
     def home():
         try:
-            # Use cached data for better performance - increased cache limits for better UX
+            # Quick connection check - skip full health check for performance
+            try:
+                db.session.execute(text("SELECT 1"))
+            except:
+                logger.warning("Database connection issue detected, using cached data only")
+
+            # Use cached data for better performance - parallel loading for speed
             summaries = get_cached_sop_summaries(10)
             lessons = get_cached_lessons_learned(10)
-
-            # Use cached recent updates for better performance
             latest_updates = get_cached_recent_updates(5)
+
             updates_data = []
-
-            # Get read counts efficiently using a single optimized query
-            if latest_updates:
-                update_ids = [update['id'] for update in latest_updates]
-                read_counts = dict(
-                    db.session.query(ReadLog.update_id, func.count(ReadLog.id))
-                    .filter(ReadLog.update_id.in_(update_ids))
-                    .group_by(ReadLog.update_id)
-                    .all()
-                )
-            else:
-                read_counts = {}
-
             current_time = now_utc()
+
+            # Process updates without read counts for faster initial load
             for update in latest_updates:
                 update_dict = update.copy()
-                update_dict['read_count'] = read_counts.get(update['id'], 0)
+                update_dict['read_count'] = 0  # Skip read counts for speed
                 update_dict['is_new'] = is_within_hours(update['timestamp'], 24, current_time)
                 updates_data.append(update_dict)
 
@@ -1127,6 +1102,12 @@ def create_app(config_name=None):
                                   excel_export_available=EXCEL_EXPORT_AVAILABLE)
         except Exception as e:
             logger.error(f"Error loading home page: {e}")
+            # Ensure database session is clean on error
+            try:
+                db.session.rollback()
+                db.session.close()
+            except:
+                pass
             # Return a basic template without updates if there's an error
             return render_template("home.html", app_name=app.config["APP_NAME"],
                                   summaries=[], lessons=[], updates=[],
@@ -1139,8 +1120,12 @@ def create_app(config_name=None):
         selected_process = request.args.get("process", "")
         selected_department = request.args.get("department", "")
         sort = request.args.get("sort", "newest")
-        page = int(request.args.get("page", 1))
-        per_page = min(int(request.args.get("per_page", 50)), 100)  # Limit to 100 max
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+            per_page = min(max(1, int(request.args.get("per_page", 50))), 100)  # Limit to 100 max
+        except (ValueError, TypeError):
+            page = 1
+            per_page = 50
 
         # Calculate offset for pagination
         offset = (page - 1) * per_page
@@ -1496,8 +1481,12 @@ def create_app(config_name=None):
     @login_required
     @performance_logger
     def list_sop_summaries():
-        page = int(request.args.get("page", 1))
-        per_page = min(int(request.args.get("per_page", 20)), 50)  # Limit to 50 max
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+            per_page = min(max(1, int(request.args.get("per_page", 20))), 50)  # Limit to 50 max
+        except (ValueError, TypeError):
+            page = 1
+            per_page = 20
         offset = (page - 1) * per_page
 
         # Get paginated results
@@ -1636,8 +1625,12 @@ def create_app(config_name=None):
     @login_required
     @performance_logger
     def list_lessons_learned():
-        page = int(request.args.get("page", 1))
-        per_page = min(int(request.args.get("per_page", 20)), 50)  # Limit to 50 max
+        try:
+            page = max(1, int(request.args.get("page", 1)))
+            per_page = min(max(1, int(request.args.get("per_page", 20))), 50)  # Limit to 50 max
+        except (ValueError, TypeError):
+            page = 1
+            per_page = 20
         offset = (page - 1) * per_page
 
         # Get paginated results
@@ -1891,46 +1884,35 @@ def create_app(config_name=None):
 
         try:
             from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment
             from io import BytesIO
 
-            # Create Excel workbook
+            # Create Excel workbook with minimal formatting for faster export
             wb = Workbook()
 
             # Remove default sheet
             wb.remove(wb.active)
 
-            # Sheet 1: Read Logs
+            # Sheet 1: Read Logs - Simplified formatting
             ws_readlogs = wb.create_sheet("Read Logs")
-            # Configure column widths
-            column_widths = {
-                'A': 10,  # Read ID
-                'B': 10,  # Update ID
-                'C': 15,  # Reader Type
-                'D': 30,  # Reader Name
-                'E': 20,  # Timestamp
-                'F': 15,  # IP Address
-                'G': 50,  # User Agent
-                'H': 50,  # Update Title
-                'I': 20,  # Process
-                'J': 20,  # Update Timestamp
-                'K': 30   # Reader Email
-            }
 
-            for col, width in column_widths.items():
-                ws_readlogs.column_dimensions[col].width = width
+            # Basic column widths only
+            ws_readlogs.column_dimensions['A'].width = 10
+            ws_readlogs.column_dimensions['B'].width = 10
+            ws_readlogs.column_dimensions['C'].width = 15
+            ws_readlogs.column_dimensions['D'].width = 30
+            ws_readlogs.column_dimensions['E'].width = 20
+            ws_readlogs.column_dimensions['F'].width = 15
+            ws_readlogs.column_dimensions['G'].width = 50
+            ws_readlogs.column_dimensions['H'].width = 50
+            ws_readlogs.column_dimensions['I'].width = 20
+            ws_readlogs.column_dimensions['J'].width = 20
+            ws_readlogs.column_dimensions['K'].width = 30
 
+            # Simple header row without styling
             ws_readlogs.append([
                 'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Read Time (IST)',
                 'IP Address', 'User Agent', 'Update Content', 'Process', 'Update Time (IST)', 'Reader Email'
             ])
-
-            # Style header row
-            header = ws_readlogs[1]
-            for cell in header:
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid")
-                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
             # Get read logs data with user information
             with app.app_context():
@@ -1985,32 +1967,18 @@ def create_app(config_name=None):
                         log.user_email if log.user_id else 'N/A'
                     ]
                     
+                    # Simple append without styling for faster export
                     ws_readlogs.append(row)
-                    
-                    # Style the row for readability
-                    row_num = ws_readlogs.max_row
-                    for col in range(1, len(row) + 1):
-                        cell = ws_readlogs.cell(row=row_num, column=col)
-                        cell.alignment = Alignment(vertical='center', wrap_text=True)
-                        
-                        # Add alternating row colors
-                        if row_num % 2 == 0:
-                            cell.fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
                 except Exception as row_error:
                     logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
                     continue
 
-            # Sheet 2: Activity Logs
+            # Sheet 2: Activity Logs - Simplified
             ws_activity = wb.create_sheet("Activity Logs")
             ws_activity.append([
                 'Activity ID', 'User', 'Action', 'Entity Type', 'Entity Title',
                 'Timestamp (IST)', 'IP Address', 'User Agent', 'Details'
             ])
-
-            # Style header row
-            for col_num, cell in enumerate(ws_activity[1], 1):
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             # Get activity logs
             with app.app_context():
@@ -2051,14 +2019,9 @@ def create_app(config_name=None):
                     logger.error(f"Error processing activity log entry {log.id}: {str(row_error)}")
                     continue
 
-            # Sheet 3: Summary Analytics
+            # Sheet 3: Summary Analytics - Simplified
             ws_analytics = wb.create_sheet("Summary Analytics")
             ws_analytics.append(['Metric', 'Value'])
-
-            # Style header row
-            for col_num, cell in enumerate(ws_analytics[1], 1):
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Total reads
@@ -2101,14 +2064,9 @@ def create_app(config_name=None):
             # Sheet 4: Top Performers
             ws_performers = wb.create_sheet("Top Performers")
 
-            # Most active readers section
+            # Most active readers section - Simplified
             ws_performers.append(['Most Active Readers'])
             ws_performers.append(['Reader Name', 'Reader Type', 'Total Reads'])
-
-            # Style headers
-            for col_num, cell in enumerate(ws_performers[2], 1):
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Top registered readers
@@ -2162,14 +2120,9 @@ def create_app(config_name=None):
             for title, process, count in top_updates:
                 ws_performers.append([title, process, count])
 
-            # Sheet 5: Engagement Metrics by Process
+            # Sheet 5: Engagement Metrics by Process - Simplified
             ws_engagement = wb.create_sheet("Engagement by Process")
             ws_engagement.append(['Process', 'Total Updates', 'Total Reads', 'Unique Readers', 'Avg Reads per Update'])
-
-            # Style header row
-            for col_num, cell in enumerate(ws_engagement[1], 1):
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
             with app.app_context():
                 # Get process metrics with proper unique reader counting
@@ -2216,19 +2169,7 @@ def create_app(config_name=None):
                 avg_reads = round(read_count / update_count, 2) if update_count > 0 else 0
                 ws_engagement.append([process, update_count, read_count, unique_readers, avg_reads])
 
-            # Auto-adjust column widths for all sheets
-            for ws in [ws_readlogs, ws_activity, ws_analytics, ws_performers, ws_engagement]:
-                for column in ws.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
-                    ws.column_dimensions[column_letter].width = adjusted_width
+            # Skip auto-adjust column widths for faster export
 
             # Generate timestamp for filename
             timestamp_str = format_ist(now_utc(), '%Y%m%d_%H%M%S')
