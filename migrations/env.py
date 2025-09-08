@@ -5,7 +5,7 @@ from flask import current_app
 from alembic import context
 
 # Import all models so Alembic sees them
-from models import User, Update, ReadLog, ActivityLog, SOPSummary, LessonLearned, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
+from models import User, Update, ReadLog, LessonReadLog, ActivityLog, SOPSummary, LessonLearned, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
 from extensions import db
 
 # Alembic Config object

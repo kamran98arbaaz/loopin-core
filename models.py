@@ -56,12 +56,7 @@ class Update(db.Model):
     process = db.Column(db.String(32), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=now_utc)  # default timestamp
 
-    read_logs = db.relationship(
-        'ReadLog',
-        backref='update',
-        cascade="all, delete-orphan",
-        passive_deletes=True
-    )
+    # Read logs relationship removed - now using separate ReadLog model
 
     def to_dict(self):
         return {
@@ -84,11 +79,7 @@ class User(db.Model, UserMixin):
     role = db.Column(db.String(20), nullable=False, default='user')
     created_at = db.Column(db.DateTime, nullable=False, default=now_utc)
 
-    read_logs = db.relationship(
-        'ReadLog',
-        backref='user',
-        cascade="all, delete-orphan"
-    )
+    # Read logs relationship removed - now using separate ReadLog and LessonReadLog models
 
     def set_password(self, raw_password):
         self.password_hash = generate_password_hash(raw_password)
@@ -134,7 +125,22 @@ class ReadLog(db.Model):
     user_agent = db.Column(db.Text, nullable=True)
 
     def reader_display(self):
-        return self.user.display_name if self.user else self.guest_name  # safer check
+        return self.user.display_name if self.user else self.guest_name
+
+
+class LessonReadLog(db.Model):
+    __tablename__ = 'lesson_read_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lesson_id = db.Column(db.Integer, db.ForeignKey('lessons_learned.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    guest_name = db.Column(db.String(100), nullable=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=now_utc)
+    ip_address = db.Column(db.String(45), nullable=True)  # IPv6 can be up to 45 chars
+    user_agent = db.Column(db.Text, nullable=True)
+
+    def reader_display(self):
+        return self.user.display_name if self.user else self.guest_name
 
 
 class ActivityLog(db.Model):

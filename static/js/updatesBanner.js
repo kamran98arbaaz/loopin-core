@@ -291,12 +291,14 @@ class UpdatesBanner {
             if (data.success && data.latest_timestamp) {
                 const latestTime = new Date(data.latest_timestamp);
                 const now = new Date();
-                const diffHours = (now - latestTime) / (1000 * 60 * 60);
+                // Convert UTC timestamp to local time for consistent comparison with highlighting
+                const localLatestTime = new Date(latestTime.getTime() - (latestTime.getTimezoneOffset() * 60000));
+                const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
 
                 const badge = document.getElementById('bell-badge');
 
                 if (badge) {
-                    if (diffHours <= 24) {
+                    if (localLatestTime > twentyFourHoursAgo) {
                         badge.style.display = 'block';
                     } else {
                         badge.style.display = 'none';

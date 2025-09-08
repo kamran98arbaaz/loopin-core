@@ -206,6 +206,16 @@
       z-index: 10;
     }
 
+    /* Highlight for specific update from search results */
+    .update-card.highlighted {
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border: 2px solid var(--warning-500);
+      box-shadow: 0 0 30px rgba(245, 158, 11, 0.4);
+      transform: translateY(-3px) scale(1.02);
+      position: relative;
+      z-index: 10;
+    }
+
     /* Removed FROM SEARCH pill - keeping clean highlight only */
 
     /* Blink effect for search highlights */
@@ -610,7 +620,7 @@
   <div class="updates-grid" id="updatesGrid">
     {% if updates and updates|length > 0 %}
       {% for update in updates %}
-        <div class="update-card update-item" data-process="{{ update.process }}" data-author="{{ update.name }}" data-update-id="{{ update.id }}" data-timestamp="{{ update.timestamp_obj.isoformat() if update.timestamp_obj else '' }}">
+        <div class="update-card update-item{% if update.is_highlighted %} highlighted{% endif %}" data-process="{{ update.process }}" data-author="{{ update.name }}" data-update-id="{{ update.id }}" data-timestamp="{{ update.timestamp_obj.isoformat() if update.timestamp_obj else '' }}">
           <div class="update-header">
             <h3 class="update-title">
               <a href="{{ url_for('view_update', update_id=update.id) }}">
@@ -638,7 +648,7 @@
 
           <div class="update-content">
             {% if update.message %}
-              {{ update.message[:300] }}{% if update.message|length > 300 %}...{% endif %}
+              {{ update.message|truncate(300, True, '...')|safe }}
             {% else %}
               No content available
             {% endif %}
@@ -876,16 +886,24 @@
       }
 
       try {
-        const timestamp = new Date(timestampStr);
+        // Parse ISO timestamp (which is in UTC)
+        const timestamp = new Date(timestampStr + (timestampStr.includes('Z') ? '' : 'Z'));
         if (isNaN(timestamp.getTime())) {
           return;
         }
 
-        if (timestamp > twentyFourHoursAgo) {
+        // Compare UTC timestamp directly with current time minus 24 hours
+        // This matches the logic used by the updates banner
+        const diffHours = (now - timestamp) / (1000 * 60 * 60);
+
+        if (diffHours <= 24) {
           card.classList.add('recent');
+        } else {
+          card.classList.remove('recent');
         }
       } catch (error) {
         // Silently handle parsing errors
+        console.warn('Error parsing timestamp:', timestampStr, error);
       }
     });
   }
@@ -991,6 +1009,41 @@
 
   // Initialize search highlight functionality
   handleHighlightFromSearch();
+
+  // Handle highlighted update from search results
+  function handleHighlightedUpdate() {
+    const highlightedUpdate = document.querySelector('.update-card.highlighted');
+
+    if (highlightedUpdate) {
+      // Scroll to the highlighted update
+      setTimeout(() => {
+        highlightedUpdate.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }, 500);
+
+      // Add blink effect
+      let blinkCount = 0;
+      const blinkInterval = setInterval(() => {
+        if (blinkCount < 6) { // Blink 3 times (on/off = 2 counts per blink)
+          highlightedUpdate.classList.toggle('blink-highlight');
+          blinkCount++;
+        } else {
+          clearInterval(blinkInterval);
+          highlightedUpdate.classList.remove('blink-highlight');
+
+          // Remove highlight after 3 more seconds
+          setTimeout(() => {
+            highlightedUpdate.classList.remove('highlighted');
+          }, 3000);
+        }
+      }, 500); // Blink every 500ms
+    }
+  }
+
+  // Initialize highlighted update functionality
+  handleHighlightedUpdate();
 
   // Add click effects to action buttons
   document.querySelectorAll('.action-btn').forEach(btn => {

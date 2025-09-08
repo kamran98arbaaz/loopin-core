@@ -4,13 +4,13 @@
 
 {% block head %}
 <style>
-  .lesson-container {
+   .lesson-container {
     max-width: 900px;
     margin: 0 auto;
     padding: var(--space-8) var(--space-6);
-  }
+   }
 
-  .lesson-header {
+   .lesson-header {
     background: linear-gradient(135deg, var(--success-50) 0%, var(--success-100) 100%);
     border-radius: var(--radius-xl);
     padding: var(--space-8);
@@ -18,9 +18,9 @@
     border: 1px solid var(--success-200);
     position: relative;
     overflow: hidden;
-  }
+   }
 
-  .lesson-header::before {
+   .lesson-header::before {
     content: '';
     position: absolute;
     top: 0;
@@ -28,49 +28,49 @@
     right: 0;
     height: 4px;
     background: linear-gradient(90deg, var(--success-500), var(--success-600));
-  }
+   }
 
-  .lesson-title {
+   .lesson-title {
     font-size: 2.25rem;
     font-weight: 700;
     color: var(--gray-900);
     margin-bottom: var(--space-4);
     line-height: 1.2;
-  }
+   }
 
-  .lesson-meta {
+   .lesson-meta {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-6);
     margin-bottom: var(--space-6);
-  }
+   }
 
-  .meta-item {
+   .meta-item {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     color: var(--gray-600);
     font-size: 0.95rem;
-  }
+   }
 
-  .meta-icon {
+   .meta-icon {
     color: var(--success-500);
     font-size: 1.1rem;
-  }
+   }
 
-  .meta-label {
+   .meta-label {
     font-weight: 600;
     color: var(--gray-700);
-  }
+   }
 
-  .tags-container {
+   .tags-container {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
     margin-top: var(--space-2);
-  }
+   }
 
-  .tag {
+   .tag {
     background: var(--success-100);
     color: var(--success-700);
     padding: 0.25rem 0.75rem;
@@ -78,99 +78,99 @@
     font-size: 0.8rem;
     font-weight: 500;
     border: 1px solid var(--success-200);
-  }
+   }
 
-  .lesson-summary {
+   .lesson-summary {
     background: var(--warning-50);
     border: 1px solid var(--warning-200);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
     margin-bottom: var(--space-8);
     border-left: 4px solid var(--warning-500);
-  }
+   }
 
-  .summary-header {
+   .summary-header {
     display: flex;
     align-items: center;
     gap: var(--space-3);
     margin-bottom: var(--space-4);
-  }
+   }
 
-  .summary-icon {
+   .summary-icon {
     background: var(--warning-100);
     color: var(--warning-600);
     padding: var(--space-2);
     border-radius: var(--radius-md);
     font-size: 1.1rem;
-  }
+   }
 
-  .summary-title {
+   .summary-title {
     font-size: 1.25rem;
     font-weight: 600;
     color: var(--gray-900);
     margin: 0;
-  }
+   }
 
-  .summary-text {
+   .summary-text {
     font-size: 1.05rem;
     line-height: 1.6;
     color: var(--gray-700);
-  }
+   }
 
-  .lesson-content {
+   .lesson-content {
     background: white;
     border-radius: var(--radius-xl);
     padding: var(--space-8);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--gray-200);
     margin-bottom: var(--space-8);
-  }
+   }
 
-  .content-header {
+   .content-header {
     display: flex;
     align-items: center;
     gap: var(--space-3);
     margin-bottom: var(--space-6);
     padding-bottom: var(--space-4);
     border-bottom: 2px solid var(--gray-100);
-  }
+   }
 
-  .content-icon {
+   .content-icon {
     background: var(--success-100);
     color: var(--success-600);
     padding: var(--space-3);
     border-radius: var(--radius-lg);
     font-size: 1.25rem;
-  }
+   }
 
-  .content-title {
+   .content-title {
     font-size: 1.5rem;
     font-weight: 600;
     color: var(--gray-900);
     margin: 0;
-  }
+   }
 
-  .lesson-text {
+   .lesson-text {
     font-size: 1.1rem;
     line-height: 1.7;
     color: var(--gray-700);
     white-space: pre-wrap;
-  }
+   }
 
-  .lesson-actions {
+   .lesson-actions {
     display: flex;
     gap: var(--space-4);
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-  }
+   }
 
-  .action-group {
+   .action-group {
     display: flex;
     gap: var(--space-3);
-  }
+   }
 
-  .btn {
+   .btn {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
@@ -182,46 +182,56 @@
     border: none;
     cursor: pointer;
     font-size: 0.95rem;
-  }
+   }
 
-  .btn-primary {
+   .btn-primary {
     background: linear-gradient(135deg, var(--success-600), var(--success-700));
     color: white;
     box-shadow: var(--shadow-md);
-  }
+   }
 
-  .btn-primary:hover {
+   .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
-  }
+   }
 
-  .btn-secondary {
+   .btn-secondary {
     background: var(--gray-100);
     color: var(--gray-700);
     border: 1px solid var(--gray-300);
-  }
+   }
 
-  .btn-secondary:hover {
+   .btn-secondary:hover {
     background: var(--gray-200);
     transform: translateY(-1px);
-  }
+   }
 
-  .btn-danger {
+   .btn-danger {
     background: var(--error-600);
     color: white;
-  }
+   }
 
-  .btn-danger:hover {
+   .btn-danger:hover {
     background: var(--error-700);
     transform: translateY(-1px);
-  }
+   }
 
-  .timestamps {
+   .timestamps {
     color: var(--gray-500);
     font-size: 0.9rem;
-  }
+   }
 
-  @media (max-width: 768px) {
+   .btn-success {
+    background: var(--success-500);
+    color: white;
+   }
+
+   .btn-success:hover {
+    background: var(--success-600);
+    transform: translateY(-1px);
+   }
+
+   @media (max-width: 768px) {
     .lesson-container {
       padding: var(--space-6) var(--space-4);
     }
@@ -252,7 +262,262 @@
       justify-content: center;
     }
   }
+
+  /* Toast notification styles */
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 400px;
+  }
+
+  .toast-notification {
+    background: white;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--gray-200);
+    margin-bottom: var(--space-3);
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+
+  .toast-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .toast-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+  }
+
+  .toast-body {
+    padding: var(--space-3) var(--space-4);
+    color: var(--gray-700);
+  }
+
+  .toast-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--gray-500);
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .toast-close:hover {
+    color: var(--gray-700);
+  }
+
+  /* Toast type specific styles */
+  .toast-success .toast-header {
+    background: var(--success-50);
+    border-bottom-color: var(--success-200);
+  }
+
+  .toast-success .toast-header strong {
+    color: var(--success-700);
+  }
+
+  .toast-error .toast-header {
+    background: var(--error-50);
+    border-bottom-color: var(--error-200);
+  }
+
+  .toast-error .toast-header strong {
+    color: var(--error-700);
+  }
+
+  .toast-warning .toast-header {
+    background: var(--warning-50);
+    border-bottom-color: var(--warning-200);
+  }
+
+  .toast-warning .toast-header strong {
+    color: var(--warning-700);
+  }
+
+  .toast-info .toast-header {
+    background: var(--info-50);
+    border-bottom-color: var(--info-200);
+  }
+
+  .toast-info .toast-header strong {
+    color: var(--info-700);
+  }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Function to mark a lesson as read
+function markLessonAsRead(lessonId, buttonElement) {
+    console.log('Mark as read clicked for lesson:', lessonId);
+
+    // Check if user is authenticated
+    const isAuthenticated = {{ 'true' if current_user.is_authenticated else 'false' }};
+
+    if (!isAuthenticated) {
+        showToast('Please log in to mark lessons as read.', 'warning');
+        return;
+    }
+
+    // Disable button to prevent double-clicks
+    buttonElement.disabled = true;
+    const originalHTML = buttonElement.innerHTML;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Marking...</span>';
+
+    // Send request to mark as read
+    fetch(`/api/mark-lesson-read/${lessonId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            lesson_id: lessonId
+        })
+    })
+    .then(response => {
+        console.log('API response status:', response.status);
+        return response.json();
+    })
+    .then(data => {
+        console.log('API response data:', data);
+
+        if (data.success) {
+            // Update button appearance
+            buttonElement.classList.remove('btn-secondary');
+            buttonElement.classList.add('btn-success');
+            buttonElement.innerHTML = '<i class="fas fa-check-circle"></i> <span>Read</span>';
+            buttonElement.disabled = true;
+
+            // Show success message
+            showToast('Lesson marked as read successfully!', 'success');
+        } else if (data.already_read) {
+            // Already read - update button appearance
+            buttonElement.classList.remove('btn-secondary');
+            buttonElement.classList.add('btn-success');
+            buttonElement.innerHTML = '<i class="fas fa-check-circle"></i> <span>Read</span>';
+            buttonElement.disabled = true;
+
+            // Show info message
+            showToast('This lesson was already marked as read.', 'info');
+        } else {
+            // Re-enable button on error
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = originalHTML;
+
+            // Show error message
+            showToast(data.message || 'Failed to mark lesson as read.', 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error marking lesson as read:', error);
+
+        // Re-enable button on error
+        buttonElement.disabled = false;
+        buttonElement.innerHTML = originalHTML;
+
+        // Show error message
+        showToast('Network error. Please try again.', 'error');
+    });
+}
+
+// Toast notification function
+function showToast(message, type = 'info') {
+    console.log('Showing toast:', message, type);
+
+    // Create toast container if it doesn't exist
+    let container = document.querySelector('.toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `toast-notification toast-${type}`;
+
+    // Determine icon and title based on type
+    const typeConfig = {
+        'success': { icon: '✓', title: 'Success' },
+        'error': { icon: '✕', title: 'Error' },
+        'warning': { icon: '⚠', title: 'Warning' },
+        'info': { icon: 'ℹ', title: 'Info' }
+    };
+
+    const config = typeConfig[type] || typeConfig['info'];
+
+    toast.innerHTML = `
+        <div class="toast-header">
+            <strong>${config.title}</strong>
+            <button class="toast-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+        <div class="toast-body">${message}</div>
+    `;
+
+    // Add to container
+    container.appendChild(toast);
+
+    // Show toast
+    setTimeout(() => {
+        toast.classList.add('show');
+        console.log('Toast shown');
+    }, 100);
+
+    // Auto-hide after 4 seconds for better visibility
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+                console.log('Toast removed');
+            }
+        }, 300);
+    }, 4000);
+}
+
+// Initialize read status when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    {% if current_user.is_authenticated %}
+    // Check read status for this lesson
+    checkLessonReadStatus({{ lesson.id }});
+    {% endif %}
+});
+
+// Function to check if a lesson has been read
+function checkLessonReadStatus(lessonId) {
+    fetch(`/api/check-lesson-read/${lessonId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.read) {
+            const button = document.getElementById('mark-read-btn');
+            if (button) {
+                button.classList.remove('btn-secondary');
+                button.classList.add('btn-success');
+                button.innerHTML = '<i class="fas fa-check-circle"></i> <span>Read</span>';
+                button.disabled = true;
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error checking lesson read status:', error);
+    });
+}
+</script>
 {% endblock %}
 
 {% block content %}
@@ -309,7 +574,7 @@
       </div>
       <h2 class="summary-title">Key Takeaway</h2>
     </div>
-    <div class="summary-text">{{ lesson.summary }}</div>
+    <div class="summary-text">{{ lesson.summary | safe }}</div>
   </div>
   {% endif %}
 
@@ -322,7 +587,7 @@
       <h2 class="content-title">Detailed Lesson</h2>
     </div>
 
-    <div class="lesson-text">{{ lesson.content }}</div>
+    <div class="lesson-text">{{ lesson.content | safe }}</div>
   </div>
 
   <!-- Actions Section -->
@@ -334,6 +599,12 @@
       </a>
 
       {% if current_user.is_authenticated %}
+        <button id="mark-read-btn" class="btn btn-secondary" onclick="markLessonAsRead({{ lesson.id }}, this)">
+          <i class="fas fa-check"></i>
+          <span>Mark as Read</span>
+        </button>
+
+        {% if user_role.is_admin %}
         <a href="{{ url_for('edit_lesson_learned', lesson_id=lesson.id) }}" class="btn btn-primary">
           <i class="fas fa-edit"></i>
           Edit Lesson
@@ -345,6 +616,7 @@
             Delete
           </button>
         </form>
+        {% endif %}
       {% endif %}
     </div>
 

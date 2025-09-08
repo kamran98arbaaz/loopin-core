@@ -3,6 +3,11 @@
 {% block title %}Add SOP Summary - {{ app_name }}{% endblock %}
 
 {% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+
   <style>
     .form-container {
       max-width: 800px;
@@ -206,16 +211,9 @@
 
       <div class="form-group">
         <label for="summary_text" class="form-label required">Summary Content</label>
-        <textarea
-          id="summary_text"
-          name="summary_text"
-          class="form-input form-textarea"
-          placeholder="Provide a comprehensive summary of the standard operating procedure..."
-          required
-          rows="8"
-        ></textarea>
+        <div id="summary_text-editor" class="form-input" style="min-height: 120px;"></div>
         <div class="help-text">
-          Include key steps, requirements, and important details that team members need to know.
+          Include key steps, requirements, and important details that team members need to know. Use the toolbar for formatting.
         </div>
       </div>
     </div>

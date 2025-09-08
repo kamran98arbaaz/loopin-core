@@ -3,6 +3,11 @@
 {% block title %}Post Update – {{ app_name }}{% endblock %}
 
 {% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+
   <style>
     .post-container {
       max-width: 800px;
@@ -415,18 +420,11 @@
 
       <div class="form-group">
         <label for="message" class="form-label required">Update Message</label>
-        <textarea
-          id="message"
-          name="message"
-          class="form-input form-textarea"
-          placeholder="Describe your update in detail. Include progress, challenges, insights, and next steps..."
-          required
-          maxlength="2000"
-        ></textarea>
+        <div id="message-editor" class="form-input" style="min-height: 150px;"></div>
         <div class="character-count" id="messageCount">0/2000</div>
         <div class="help-text">
           Be specific about what you've accomplished, any challenges you faced, and what's coming next.
-          This helps team members understand the full context.
+          This helps team members understand the full context. Use the toolbar for formatting.
         </div>
 
         <!-- Live Preview -->
@@ -455,58 +453,67 @@
 </div>
 
 <script>
-  // Character count functionality
-  function updateCharacterCount(inputId, countId, maxLength) {
-    const input = document.getElementById(inputId);
+  // Character count functionality for rich text editor
+  function updateCharacterCountForEditor(editorName, countId, maxLength) {
     const count = document.getElementById(countId);
-    
-    input.addEventListener('input', function() {
-      const length = this.value.length;
-      const remaining = maxLength - length;
-      
-      count.textContent = `${length}/${maxLength}`;
-      
-      // Update count styling based on remaining characters
-      count.className = 'character-count';
-      if (remaining <= maxLength * 0.1) {
-        count.classList.add('error');
-      } else if (remaining <= maxLength * 0.2) {
-        count.classList.add('warning');
+
+    // Update character count when editor content changes
+    setInterval(() => {
+      if (window.richTextEditor && window.richTextEditor.editors.has(editorName)) {
+        const editor = window.richTextEditor.editors.get(editorName);
+        const textContent = editor.getText().trim();
+        const length = textContent.length;
+        const remaining = maxLength - length;
+
+        count.textContent = `${length}/${maxLength}`;
+
+        // Update count styling based on remaining characters
+        count.className = 'character-count';
+        if (remaining <= maxLength * 0.1) {
+          count.classList.add('error');
+        } else if (remaining <= maxLength * 0.2) {
+          count.classList.add('warning');
+        }
       }
-    });
+    }, 500); // Update every 500ms
   }
 
-  // Initialize character counts
-  updateCharacterCount('message', 'messageCount', 2000);
+  // Initialize character counts for rich text editor
+  updateCharacterCountForEditor('message', 'messageCount', 2000);
 
-  // Live preview functionality
-  const messageInput = document.getElementById('message');
+  // Live preview functionality for rich text editor
   const previewSection = document.getElementById('messagePreview');
   const previewText = document.getElementById('previewText');
 
-  messageInput.addEventListener('input', function() {
-    const content = this.value.trim();
+  setInterval(() => {
+    if (window.richTextEditor && window.richTextEditor.editors.has('message')) {
+      const editor = window.richTextEditor.editors.get('message');
+      const content = editor.getText().trim();
 
-    if (content.length > 0) {
-      previewText.textContent = content;
-      previewSection.style.display = 'block';
-    } else {
-      previewSection.style.display = 'none';
+      if (content.length > 0) {
+        previewText.innerHTML = editor.root.innerHTML;
+        previewSection.style.display = 'block';
+      } else {
+        previewSection.style.display = 'none';
+      }
     }
-  });
+  }, 1000); // Update preview every second
 
 
 
-  // Form validation
+  // Form validation for rich text editor
   document.getElementById('postForm').addEventListener('submit', function(e) {
-    const message = document.getElementById('message').value.trim();
+    let message = '';
+    if (window.richTextEditor && window.richTextEditor.editors.has('message')) {
+      message = window.richTextEditor.editors.get('message').getText().trim();
+    }
     const process = document.getElementById('process').value;
 
     let isValid = true;
 
     // Clear previous errors
-    document.querySelectorAll('.form-input').forEach(input => {
-      input.classList.remove('error');
+    document.querySelectorAll('.ql-editor').forEach(editor => {
+      editor.classList.remove('error');
     });
     document.querySelectorAll('.form-error').forEach(error => {
       error.remove();
@@ -514,10 +521,10 @@
 
     // Validate message
     if (!message) {
-      showFieldError('message', 'Message is required');
+      showFieldError('message-editor', 'Message is required');
       isValid = false;
     } else if (message.length < 10) {
-      showFieldError('message', 'Message must be at least 10 characters long');
+      showFieldError('message-editor', 'Message must be at least 10 characters long');
       isValid = false;
     }
 

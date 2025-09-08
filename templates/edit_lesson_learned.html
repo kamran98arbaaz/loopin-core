@@ -2,6 +2,11 @@
 {% block title %}Edit Lesson Learned – {{ app_name }}{% endblock %}
 
 {% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+
 <style>
   .edit-container {
     max-width: 900px;
@@ -291,13 +296,8 @@
 
       <div class="form-group">
         <label for="summary" class="form-label">Key Takeaway</label>
-        <textarea
-          id="summary"
-          name="summary"
-          class="form-textarea large"
-          placeholder="Summarize the main lesson or insight in a few sentences..."
-        >{{ lesson.summary or '' }}</textarea>
-        <div class="form-help">Provide a concise summary of the key learning points</div>
+        <div id="summary-editor" class="form-textarea large" style="min-height: 120px;"></div>
+        <div class="form-help">Provide a concise summary of the key learning points. Use the toolbar for formatting.</div>
       </div>
     </div>
 
@@ -310,14 +310,8 @@
 
       <div class="form-group">
         <label for="content" class="form-label required">Content</label>
-        <textarea
-          id="content"
-          name="content"
-          required
-          class="form-textarea extra-large"
-          placeholder="Provide the detailed lesson learned content, including context, what happened, what was learned, and recommendations..."
-        >{{ lesson.content }}</textarea>
-        <div class="form-help">Include background, situation, actions taken, results, and lessons learned</div>
+        <div id="content-editor" class="form-textarea extra-large" style="min-height: 300px;"></div>
+        <div class="form-help">Include background, situation, actions taken, results, and lessons learned. Use the toolbar for formatting.</div>
       </div>
     </div>
 
@@ -400,4 +394,26 @@
     </form>
   </div>
 </div>
+
+<script>
+  // Populate the rich text editors with existing content
+  document.addEventListener('DOMContentLoaded', function() {
+    // Wait for the rich text editor to initialize
+    setTimeout(() => {
+      if (window.richTextEditor) {
+        // Populate summary editor
+        const summaryContent = `{{ lesson.summary | tojson }}`;
+        if (summaryContent && summaryContent !== 'null' && window.richTextEditor.editors.has('summary')) {
+          window.richTextEditor.setContent('summary', summaryContent);
+        }
+
+        // Populate content editor
+        const contentContent = `{{ lesson.content | tojson }}`;
+        if (contentContent && contentContent !== 'null' && window.richTextEditor.editors.has('content')) {
+          window.richTextEditor.setContent('content', contentContent);
+        }
+      }
+    }, 100);
+  });
+</script>
 {% endblock %}

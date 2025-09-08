@@ -7,6 +7,7 @@ from models import Update, ReadLog, User
 from extensions import db
 from timezone_utils import now_utc, is_within_hours, format_ist
 from sqlalchemy import desc, func
+from datetime import timedelta
 
 # Create blueprint
 updates_bp = Blueprint('updates_api', __name__)
@@ -105,8 +106,9 @@ def get_stats():
 
             # Updates in last 24 hours
             current_time = now_utc()
+            twenty_four_hours_ago = current_time - timedelta(hours=24)
             recent_updates = session.query(Update).filter(
-                Update.timestamp >= current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                Update.timestamp >= twenty_four_hours_ago
             ).count()
 
             # Most read update

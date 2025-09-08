@@ -1,29 +1,389 @@
 {% extends "base.html" %}
 
-{% block title %}SOP Summaries - {{ app_name }}{% endblock %}
+{% block title %}Browse SOPs - {{ app_name }}{% endblock %}
+
+{% block head %}
+<style>
+  /* Page Header */
+  .page-header {
+    text-align: center;
+    margin-bottom: var(--space-8);
+    padding: var(--space-6) 0;
+  }
+
+  .page-title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: var(--space-3);
+    line-height: 1.2;
+    background: linear-gradient(135deg, var(--gray-900) 0%, var(--primary-600) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .page-subtitle {
+    font-size: 1.0rem;
+    color: var(--gray-600);
+    margin-bottom: var(--space-4);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.5;
+  }
+
+  /* SOP Cards List */
+  .sops-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+  }
+
+  .sop-card {
+    background: white;
+    border-radius: var(--radius-2xl);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--gray-200);
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .sop-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+    transform: scaleX(0);
+    transition: transform var(--transition-normal);
+  }
+
+  .sop-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .sop-card:hover::before {
+    transform: scaleX(1);
+  }
+
+  .sop-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: var(--space-3);
+    line-height: 1.3;
+  }
+
+  .sop-content {
+    color: var(--gray-700);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin-bottom: var(--space-4);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .sop-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    margin-bottom: var(--space-4);
+  }
+
+  .sop-department {
+    background: var(--primary-100);
+    color: var(--primary-700);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    font-size: 0.8rem;
+  }
+
+  .sop-date {
+    font-weight: 500;
+  }
+
+  .sop-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+  }
+
+  .sop-tag {
+    background: var(--gray-100);
+    color: var(--gray-700);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .sop-actions {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .sop-view-btn {
+    background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+    color: white;
+    border: none;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .sop-view-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Add New Button */
+  .add-new-section {
+    text-align: center;
+    margin-bottom: var(--space-8);
+  }
+
+  .add-new-btn {
+    background: linear-gradient(135deg, var(--success-500), var(--success-600));
+    color: white;
+    border: none;
+    padding: var(--space-4) var(--space-6);
+    border-radius: var(--radius-xl);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .add-new-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-xl);
+  }
+
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: var(--space-12) var(--space-6);
+    color: var(--gray-500);
+  }
+
+  .empty-state i {
+    font-size: 4rem;
+    color: var(--gray-300);
+    margin-bottom: var(--space-4);
+  }
+
+  .empty-state h3 {
+    font-size: 1.5rem;
+    color: var(--gray-700);
+    margin-bottom: var(--space-2);
+  }
+
+  .empty-state p {
+    font-size: 1rem;
+    margin-bottom: var(--space-6);
+  }
+
+  /* Pagination */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-8);
+  }
+
+  .pagination-btn {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+  }
+
+  .pagination-btn:hover {
+    background: var(--gray-50);
+    border-color: var(--primary-300);
+  }
+
+  .pagination-btn.active {
+    background: var(--primary-600);
+    color: white;
+    border-color: var(--primary-600);
+  }
+
+  .pagination-info {
+    color: var(--gray-600);
+    font-size: 0.9rem;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .page-title {
+      font-size: 2rem;
+    }
+
+    .page-subtitle {
+      font-size: 0.9rem;
+    }
+
+    .sops-list {
+      gap: var(--space-3);
+    }
+
+    .sop-card {
+      padding: var(--space-4);
+    }
+
+    .sop-title {
+      font-size: 1.1rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .page-title {
+      font-size: 1.75rem;
+    }
+
+    .sop-meta {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-2);
+    }
+
+    .sop-actions {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .sop-view-btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<h2>SOP Summaries</h2>
+<!-- Page Header -->
+<section class="page-header">
+  <h1 class="page-title">Browse SOP Summaries</h1>
+  <p class="page-subtitle">
+    Access and explore Standard Operating Procedure summaries and guidelines.
+    Find the information you need to maintain consistency and quality in your work.
+  </p>
+</section>
 
-{% if current_user %}
-  <a href="{{ url_for('add_sop_summary') }}" class="btn btn-primary" style="margin-bottom: 1rem;">
-    + Add New SOP Summary
+<!-- Add New Section -->
+{% if current_user.is_authenticated %}
+<section class="add-new-section">
+  <a href="{{ url_for('add_sop_summary') }}" class="add-new-btn">
+    <i class="fas fa-plus-circle"></i>
+    Add New SOP Summary
   </a>
+</section>
 {% endif %}
 
+<!-- SOP Summaries Grid -->
 {% if summaries %}
-  <ul class="summary-list">
+<section class="sops-section">
+  <div class="sops-list">
     {% for summary in summaries %}
-      <li>
-        <a href="{{ url_for('view_sop_summary', summary_id=summary.id) }}">
-          {{ summary.title }}
+    <div class="sop-card">
+      <h3 class="sop-title">{{ summary.title }}</h3>
+
+
+      <div class="sop-meta">
+        {% if summary.department %}
+        <span class="sop-department">{{ summary.department }}</span>
+        {% endif %}
+        <span class="sop-date">
+          <i class="fas fa-calendar"></i>
+          {{ summary.created_at.strftime('%d/%m/%Y') }}
+        </span>
+      </div>
+
+      {% if summary.tags %}
+      <div class="sop-tags">
+        {% for tag in summary.tags %}
+        <span class="sop-tag">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="sop-actions">
+        <a href="{{ url_for('view_sop_summary', summary_id=summary.id) }}" class="sop-view-btn">
+          <i class="fas fa-eye"></i>
+          View Details
         </a>
-        <small> (Created on {{ summary.created_at.strftime('%d/%m/%Y') }})</small>
-      </li>
+      </div>
+    </div>
     {% endfor %}
-  </ul>
+  </div>
+</section>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<section class="pagination">
+  {% if has_prev %}
+  <a href="{{ url_for('list_sop_summaries', page=page-1, per_page=per_page) }}" class="pagination-btn">
+    <i class="fas fa-chevron-left"></i> Previous
+  </a>
+  {% endif %}
+
+  <span class="pagination-info">
+    Page {{ page }} of {{ total_pages }} ({{ total_sops }} total)
+  </span>
+
+  {% if has_next %}
+  <a href="{{ url_for('list_sop_summaries', page=page+1, per_page=per_page) }}" class="pagination-btn">
+    Next <i class="fas fa-chevron-right"></i>
+  </a>
+  {% endif %}
+</section>
+{% endif %}
+
 {% else %}
-  <p>No SOP summaries available yet.</p>
+<!-- Empty State -->
+<section class="empty-state">
+  <i class="fas fa-book-open"></i>
+  <h3>No SOP Summaries Yet</h3>
+  <p>Standard Operating Procedures help maintain consistency and quality across your team.</p>
+  {% if current_user.is_authenticated %}
+  <a href="{{ url_for('add_sop_summary') }}" class="add-new-btn">
+    <i class="fas fa-plus-circle"></i>
+    Create Your First SOP Summary
+  </a>
+  {% endif %}
+</section>
 {% endif %}
 
 {% endblock %}

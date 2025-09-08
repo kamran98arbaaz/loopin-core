@@ -3,6 +3,11 @@
 {% block title %}Add Lesson Learned - {{ app_name }}{% endblock %}
 
 {% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+
   <style>
     .form-container {
       max-width: 800px;
@@ -206,30 +211,17 @@
 
       <div class="form-group">
         <label for="content" class="form-label required">Detailed Content</label>
-        <textarea
-          id="content"
-          name="content"
-          class="form-input form-textarea"
-          placeholder="Describe the lesson learned in detail. Include context, what happened, what was learned, and how it can be applied..."
-          required
-          rows="8"
-        ></textarea>
+        <div id="content-editor" class="form-input" style="min-height: 120px;"></div>
         <div class="help-text">
-          Provide comprehensive details about the situation, what was learned, and actionable insights.
+          Provide comprehensive details about the situation, what was learned, and actionable insights. Use the toolbar for formatting.
         </div>
       </div>
 
       <div class="form-group">
         <label for="summary" class="form-label">Quick Summary</label>
-        <textarea
-          id="summary"
-          name="summary"
-          class="form-input form-textarea"
-          placeholder="Optional: Provide a brief summary of the key takeaway..."
-          rows="4"
-        ></textarea>
+        <div id="summary-editor" class="form-input" style="min-height: 80px;"></div>
         <div class="help-text">
-          A concise summary that captures the essence of the lesson for quick reference.
+          A concise summary that captures the essence of the lesson for quick reference. Use the toolbar for formatting.
         </div>
       </div>
     </div>

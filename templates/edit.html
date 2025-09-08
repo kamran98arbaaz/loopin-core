@@ -1,6 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Edit Update – {{ app_name }}{% endblock %}
 
+{% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+{% endblock %}
+
 {% block content %}
 <style>
   .edit-container {
@@ -227,13 +234,7 @@
           <i class="fas fa-comment-alt"></i>
           Update Message
         </label>
-        <textarea
-          name="message"
-          id="message"
-          class="form-textarea"
-          required
-          placeholder="Enter your update message here..."
-        >{{ update.message }}</textarea>
+        <div id="message-editor" class="form-textarea" style="min-height: 200px;"></div>
       </div>
 
       <div class="form-actions">
@@ -249,4 +250,19 @@
     </form>
   </div>
 </div>
+
+<script>
+  // Populate the rich text editor with existing content
+  document.addEventListener('DOMContentLoaded', function() {
+    // Wait for the rich text editor to initialize
+    setTimeout(() => {
+      if (window.richTextEditor && window.richTextEditor.editors.has('message')) {
+        const existingContent = `{{ update.message | tojson }}`;
+        if (existingContent && existingContent !== 'null') {
+          window.richTextEditor.setContent('message', existingContent);
+        }
+      }
+    }, 100);
+  });
+</script>
 {% endblock %}

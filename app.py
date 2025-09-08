@@ -40,7 +40,7 @@ from functools import wraps
 from flask_migrate import Migrate
 from read_logs import bp as read_logs_bp
 from flask_login import LoginManager, login_required
-from models import User, Update, ReadLog, SOPSummary, LessonLearned, ActivityLog, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
+from models import User, Update, ReadLog, LessonReadLog, SOPSummary, LessonLearned, ActivityLog, ArchivedUpdate, ArchivedSOPSummary, ArchivedLessonLearned
 from extensions import db
 from database import db_session
 from role_decorators import admin_required, editor_required, writer_required, delete_required, export_required, get_user_role_info
@@ -168,8 +168,8 @@ def get_cached_user_role(user_id):
         else:
             del _cache[cache_key]
 
-    # Clean up expired entries periodically
-    if len(_cache) > MAX_CACHE_SIZE * 0.8:  # Clean when 80% full
+    # Clean up expired entries less frequently - only when cache is near capacity
+    if len(_cache) >= MAX_CACHE_SIZE:
         cleanup_expired_cache()
 
     try:
@@ -876,6 +876,58 @@ def create_app(config_name=None):
             except:
                 return str(iso_string)
 
+    @app.template_filter('strip_html')
+    def strip_html_filter(text):
+        """Strip HTML tags from text for clean display"""
+        if not text:
+            return ''
+        import re
+        # Remove HTML tags
+        clean_text = re.sub(r'<[^>]+>', '', text)
+        # Decode HTML entities
+        import html
+        clean_text = html.unescape(clean_text)
+        return clean_text
+
+    @app.template_filter('truncate_html')
+    def truncate_html_filter(text, length=300, killwords=False, end='...'):
+        """Truncate HTML content while preserving tags"""
+        if not text:
+            return ''
+
+        import re
+        from html import unescape
+
+        # If text is shorter than length, return as is
+        if len(strip_html_filter(text)) <= length:
+            return text
+
+        # Find all HTML tags
+        tags = re.findall(r'<[^>]+>', text)
+        text_without_tags = re.sub(r'<[^>]+>', '', text)
+
+        # Truncate the text without tags
+        if killwords:
+            truncated = text_without_tags[:length]
+        else:
+            words = text_without_tags.split()
+            truncated = ''
+            for word in words:
+                if len(truncated + word) + 1 > length:
+                    break
+                truncated += word + ' '
+            truncated = truncated.rstrip()
+
+        # If we have an end marker and the text was truncated
+        if end and len(text_without_tags) > length:
+            truncated += end
+
+        # Now we need to reconstruct HTML with tags
+        # This is a simplified approach - for complex HTML, a more sophisticated parser would be needed
+        result = truncated
+
+        return result
+
     @app.context_processor
     def built_assets_available():
         """Expose a small flag to templates indicating whether built CSS exists.
@@ -926,8 +978,7 @@ def create_app(config_name=None):
 
             # Log memory usage only for high usage (>80% of 512MB tier)
             if memory_mb > 400:  # Log if memory usage is high for 512MB tier
-                logger.warning(".2f"
-                              f"memory_percent={(memory_mb/512)*100:.1f}")
+                logger.warning(f"Memory usage: {memory_mb:.2f} MB, memory_percent={(memory_mb/512)*100:.1f}%")
 
             return jsonify(out), 200
         except Exception as e:
@@ -981,87 +1032,100 @@ def create_app(config_name=None):
             # Case-insensitive search
             query_filter = f"%{query}%"
 
-            # Search Updates (if no category filter or category is 'updates')
-            if not category or category == "updates":
-                updates_query = Update.query.filter(
-                    or_(
-                        Update.message.ilike(query_filter),
-                        Update.name.ilike(query_filter),
-                        Update.process.ilike(query_filter)
-                    )
-                )
+            try:
+                # Use a single session for all queries to prevent connection pool exhaustion
+                with db.session.begin():
+                    # Search Updates (if no category filter or category is 'updates')
+                    if not category or category == "updates":
+                        updates_query = Update.query.filter(
+                            or_(
+                                Update.message.ilike(query_filter),
+                                Update.name.ilike(query_filter),
+                                Update.process.ilike(query_filter)
+                            )
+                        )
 
-                # Apply process filter
-                if process:
-                    updates_query = updates_query.filter(Update.process.ilike(f"%{process}%"))
+                        # Apply process filter
+                        if process:
+                            updates_query = updates_query.filter(Update.process.ilike(f"%{process}%"))
 
-                updates_rows = updates_query.order_by(Update.timestamp.desc()).limit(limit_per_category).all()
+                        updates_rows = updates_query.order_by(Update.timestamp.desc()).limit(limit_per_category).all()
 
-                for upd in updates_rows:
-                    results.append({
-                        "id": upd.id,
-                        "title": f"{upd.process} - {upd.name}",
-                        "content": upd.message[:200] + ("..." if len(upd.message) > 200 else ""),
-                        "type": "update",
-                        "url": url_for("view_update", update_id=upd.id),
-                        "author": upd.name,
-                        "created_at": upd.timestamp,
-                        "process": upd.process
-                    })
+                        for upd in updates_rows:
+                            results.append({
+                                "id": upd.id,
+                                "title": f"{upd.process} - {upd.name}",
+                                "content": upd.message[:200] + ("..." if len(upd.message) > 200 else ""),
+                                "type": "update",
+                                "url": url_for("view_update", update_id=upd.id),
+                                "author": upd.name,
+                                "created_at": upd.timestamp,
+                                "process": upd.process
+                            })
 
-            # Search SOP Summaries (if no category filter or category is 'sops')
-            if not category or category == "sops":
-                sops_query = SOPSummary.query.filter(
-                    or_(
-                        SOPSummary.title.ilike(query_filter),
-                        SOPSummary.summary_text.ilike(query_filter)
-                    )
-                )
+                    # Search SOP Summaries (if no category filter or category is 'sops')
+                    if not category or category == "sops":
+                        sops_query = SOPSummary.query.filter(
+                            or_(
+                                SOPSummary.title.ilike(query_filter),
+                                SOPSummary.summary_text.ilike(query_filter)
+                            )
+                        )
 
-                # Apply department filter
-                if department:
-                    sops_query = sops_query.filter(SOPSummary.department.ilike(f"%{department}%"))
+                        # Apply department filter
+                        if department:
+                            sops_query = sops_query.filter(SOPSummary.department.ilike(f"%{department}%"))
 
-                sops_rows = sops_query.order_by(SOPSummary.created_at.desc()).limit(limit_per_category).all()
+                        sops_rows = sops_query.order_by(SOPSummary.created_at.desc()).limit(limit_per_category).all()
 
-                for sop in sops_rows:
-                    results.append({
-                        "id": sop.id,
-                        "title": sop.title,
-                        "content": sop.summary_text[:200] + ("..." if len(sop.summary_text) > 200 else ""),
-                        "type": "sop",
-                        "url": url_for("view_sop_summary", summary_id=sop.id),
-                        "created_at": sop.created_at,
-                        "tags": sop.tags or []
-                    })
+                        for sop in sops_rows:
+                            results.append({
+                                "id": sop.id,
+                                "title": sop.title,
+                                "content": sop.summary_text[:200] + ("..." if len(sop.summary_text) > 200 else ""),
+                                "type": "sop",
+                                "url": url_for("view_sop_summary", summary_id=sop.id),
+                                "created_at": sop.created_at,
+                                "tags": sop.tags or []
+                            })
 
-            # Search Lessons Learned (if no category filter or category is 'lessons')
-            if not category or category == "lessons":
-                lessons_query = LessonLearned.query.filter(
-                    or_(
-                        LessonLearned.title.ilike(query_filter),
-                        LessonLearned.content.ilike(query_filter),
-                        LessonLearned.summary.ilike(query_filter)
-                    )
-                )
+                    # Search Lessons Learned (if no category filter or category is 'lessons')
+                    if not category or category == "lessons":
+                        lessons_query = LessonLearned.query.filter(
+                            or_(
+                                LessonLearned.title.ilike(query_filter),
+                                LessonLearned.content.ilike(query_filter),
+                                LessonLearned.summary.ilike(query_filter)
+                            )
+                        )
 
-                # Apply department filter
-                if department:
-                    lessons_query = lessons_query.filter(LessonLearned.department.ilike(f"%{department}%"))
+                        # Apply department filter
+                        if department:
+                            lessons_query = lessons_query.filter(LessonLearned.department.ilike(f"%{department}%"))
 
-                lessons_rows = lessons_query.order_by(LessonLearned.created_at.desc()).limit(limit_per_category).all()
+                        lessons_rows = lessons_query.order_by(LessonLearned.created_at.desc()).limit(limit_per_category).all()
 
-                for lesson in lessons_rows:
-                    results.append({
-                        "id": lesson.id,
-                        "title": lesson.title,
-                        "content": (lesson.summary or lesson.content or "")[:200] + ("..." if len(lesson.summary or lesson.content or "") > 200 else ""),
-                        "type": "lesson",
-                        "url": url_for("view_lesson_learned", lesson_id=lesson.id),
-                        "author": lesson.author,
-                        "created_at": lesson.created_at,
-                        "tags": lesson.tags or []
-                    })
+                        for lesson in lessons_rows:
+                            results.append({
+                                "id": lesson.id,
+                                "title": lesson.title,
+                                "content": (lesson.summary or lesson.content or "")[:200] + ("..." if len(lesson.summary or lesson.content or "") > 200 else ""),
+                                "type": "lesson",
+                                "url": url_for("view_lesson_learned", lesson_id=lesson.id),
+                                "author": lesson.author,
+                                "created_at": lesson.created_at,
+                                "tags": lesson.tags or []
+                            })
+
+            except Exception as e:
+                logger.error(f"Database error during search: {e}")
+                # Ensure session is clean
+                try:
+                    db.session.rollback()
+                except:
+                    pass
+                # Return empty results on error
+                results = []
 
         return render_template("search_results.html",
                               query=query,
@@ -1120,12 +1184,42 @@ def create_app(config_name=None):
         selected_process = request.args.get("process", "")
         selected_department = request.args.get("department", "")
         sort = request.args.get("sort", "newest")
+        highlight_update = request.args.get("highlight_update", "")
+
         try:
             page = max(1, int(request.args.get("page", 1)))
             per_page = min(max(1, int(request.args.get("per_page", 50))), 100)  # Limit to 100 max
         except (ValueError, TypeError):
             page = 1
             per_page = 50
+
+        # If we have a highlight_update parameter, find which page it should be on
+        if highlight_update:
+            try:
+                # Find the position of the highlighted update
+                highlight_query = db.session.query(Update)
+
+                # Apply the same filters as the main query
+                if selected_process:
+                    highlight_query = highlight_query.filter(Update.process == selected_process)
+
+                # Apply the same sorting
+                if sort == "oldest":
+                    highlight_query = highlight_query.order_by(Update.timestamp.asc())
+                elif sort == "process":
+                    highlight_query = highlight_query.order_by(Update.process.asc(), Update.timestamp.desc())
+                elif sort == "author":
+                    highlight_query = highlight_query.order_by(Update.name.asc(), Update.timestamp.desc())
+                else:  # newest (default)
+                    highlight_query = highlight_query.order_by(Update.timestamp.desc())
+
+                # Get all IDs in order to find the position
+                all_ids = [upd.id for upd in highlight_query.all()]
+                if highlight_update in all_ids:
+                    position = all_ids.index(highlight_update)
+                    page = (position // per_page) + 1
+            except Exception as e:
+                logger.warning(f"Error calculating highlight page: {e}")
 
         # Calculate offset for pagination
         offset = (page - 1) * per_page
@@ -1153,17 +1247,9 @@ def create_app(config_name=None):
         # Apply pagination
         paginated_updates = base_query.offset(offset).limit(per_page).all()
 
-        # Get read counts efficiently using a single query
+        # Get read counts efficiently using cached function
         update_ids = [upd.id for upd in paginated_updates]
-        if update_ids:
-            read_counts = dict(
-                db.session.query(ReadLog.update_id, func.count(ReadLog.id))
-                .filter(ReadLog.update_id.in_(update_ids))
-                .group_by(ReadLog.update_id)
-                .all()
-            )
-        else:
-            read_counts = {}
+        read_counts = get_cached_read_counts(update_ids) if update_ids else {}
 
         updates = []
         current_time = now_utc()
@@ -1172,15 +1258,36 @@ def create_app(config_name=None):
             d['read_count'] = read_counts.get(upd.id, 0)
             d['is_new'] = is_within_hours(upd.timestamp, 24, current_time)
             d['timestamp_obj'] = upd.timestamp
+            d['is_highlighted'] = (highlight_update and upd.id == highlight_update)
             updates.append(d)
 
-        # Get additional data for template more efficiently
-        unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
-        processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
+        # Get additional data for template using optimized caching
+        current_time = time.time()
 
-        # Calculate updates this week more efficiently
-        week_ago = get_hours_ago(24 * 7)
-        updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
+        # Cache authors with optimized logic
+        cache_key_authors = "updates_page_authors"
+        if cache_key_authors not in _cache or current_time - _cache[cache_key_authors][0] >= 300:
+            unique_authors = [row[0] for row in db.session.query(Update.name).filter(Update.name.isnot(None)).distinct().all()]
+            _cache[cache_key_authors] = (current_time, unique_authors)
+        else:
+            unique_authors = _cache[cache_key_authors][1]
+
+        # Cache processes with optimized logic
+        cache_key_processes = "updates_page_processes"
+        if cache_key_processes not in _cache or current_time - _cache[cache_key_processes][0] >= 300:
+            processes = [row[0] for row in db.session.query(Update.process).filter(Update.process.isnot(None)).distinct().all()]
+            _cache[cache_key_processes] = (current_time, processes)
+        else:
+            processes = _cache[cache_key_processes][1]
+
+        # Cache weekly updates count with optimized logic
+        cache_key_weekly = "updates_weekly_count"
+        if cache_key_weekly not in _cache or current_time - _cache[cache_key_weekly][0] >= 60:
+            week_ago = get_hours_ago(24 * 7)
+            updates_this_week = Update.query.filter(Update.timestamp >= week_ago).count()
+            _cache[cache_key_weekly] = (current_time, updates_this_week)
+        else:
+            updates_this_week = _cache[cache_key_weekly][1]
 
         # Get unique departments (consistent with other forms)
         departments = ["ABC", "XYZ", "AB"]
@@ -1205,7 +1312,8 @@ def create_app(config_name=None):
                               total_updates=total_updates,
                               total_pages=total_pages,
                               has_next=has_next,
-                              has_prev=has_prev)
+                              has_prev=has_prev,
+                              highlight_update=highlight_update)
 
     @app.route("/post", methods=["GET", "POST"])
     @writer_required
@@ -1294,7 +1402,7 @@ def create_app(config_name=None):
         read_count = db.session.query(func.count(ReadLog.id)).filter(
             ReadLog.update_id == update_id
         ).scalar()
-        
+
         # Check if current user has read this update
         is_read = False
         if session.get("user_id"):
@@ -1506,7 +1614,7 @@ def create_app(config_name=None):
                              has_prev=page > 1)
 
     @app.route("/sop_summaries/add", methods=["GET", "POST"])
-    @writer_required
+    @admin_required
     def add_sop_summary():
         if request.method == "POST":
             title = request.form.get("title", "").strip()
@@ -1545,7 +1653,7 @@ def create_app(config_name=None):
         return render_template("add_sop_summary.html")
 
     @app.route("/sop_summaries/edit/<int:sop_id>", methods=["GET", "POST"])
-    @writer_required
+    @admin_required
     def edit_sop_summary(sop_id):
         sop = SOPSummary.query.get(sop_id)
         if not sop:
@@ -1650,7 +1758,7 @@ def create_app(config_name=None):
                              has_prev=page > 1)
 
     @app.route("/lessons_learned/add", methods=["GET", "POST"])
-    @writer_required
+    @admin_required
     def add_lesson_learned():
         if request.method == "POST":
             title = request.form.get("title", "").strip()
@@ -1693,7 +1801,7 @@ def create_app(config_name=None):
         return render_template("add_lesson_learned.html")
 
     @app.route("/lessons_learned/edit/<int:lesson_id>", methods=["GET", "POST"])
-    @writer_required
+    @admin_required
     def edit_lesson_learned(lesson_id):
         lesson = LessonLearned.query.get(lesson_id)
         if not lesson:
@@ -1743,7 +1851,7 @@ def create_app(config_name=None):
         return render_template("edit_lesson_learned.html", lesson=lesson)
 
     @app.route("/lessons_learned/delete/<int:lesson_id>", methods=["POST"])
-    @delete_required
+    @admin_required
     def delete_lesson_learned(lesson_id):
         lesson = LessonLearned.query.get(lesson_id)
         if not lesson:
@@ -1818,7 +1926,7 @@ def create_app(config_name=None):
         try:
             # Get the since parameter (milliseconds since epoch)
             since_ts = request.args.get('since')
-            
+
             if since_ts:
                 # Convert milliseconds to datetime
                 since_datetime = datetime.fromtimestamp(int(since_ts)/1000.0, pytz.UTC)
@@ -1826,44 +1934,144 @@ def create_app(config_name=None):
                 # Default to last 24 hours if no timestamp provided
                 since_datetime = get_hours_ago(24)
 
-            # Use more efficient query with explicit column selection
-            recent_updates = db.session.query(
-                Update.id,
-                Update.name,
-                Update.process,
-                Update.message,
-                Update.timestamp
-            ).filter(
-                Update.timestamp >= since_datetime
-            ).order_by(Update.timestamp.desc()).limit(10).all()
+            # Use a single session for the query to prevent connection pool exhaustion
+            with db.session.begin():
+                # Use more efficient query with explicit column selection
+                recent_updates = db.session.query(
+                    Update.id,
+                    Update.name,
+                    Update.process,
+                    Update.message,
+                    Update.timestamp
+                ).filter(
+                    Update.timestamp >= since_datetime
+                ).order_by(Update.timestamp.desc()).limit(10).all()
 
-            if not recent_updates:
+                if not recent_updates:
+                    return jsonify({
+                        'updates': [],
+                        'message': 'No recent updates found'
+                    })
+
+                updates_data = []
+                for update in recent_updates:
+                    # Ensure timezone is properly handled
+                    timestamp = ensure_timezone(update.timestamp, UTC)
+
+                    updates_data.append({
+                        "id": update.id,
+                        "name": update.name,
+                        "process": update.process,
+                        "message": update.message,
+                        "timestamp": timestamp.isoformat()
+                    })
+
                 return jsonify({
-                    'updates': [],
-                    'message': 'No recent updates found'
+                    "success": True,
+                    "updates": updates_data
+                })
+        except Exception as e:
+            logger.error(f"Error in recent-updates: {str(e)}")
+            # Ensure session is clean on error
+            try:
+                db.session.rollback()
+            except:
+                pass
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+
+    @app.route("/api/mark-lesson-read/<int:lesson_id>", methods=["POST"])
+    @login_required
+    def mark_lesson_read(lesson_id):
+        """Mark a lesson learned as read for the current user."""
+        try:
+            # Check if lesson exists
+            lesson = LessonLearned.query.get(lesson_id)
+            if not lesson:
+                return jsonify({
+                    "success": False,
+                    "message": "Lesson not found"
+                }), 404
+
+            user_id = session.get("user_id")
+            if not user_id:
+                return jsonify({
+                    "success": False,
+                    "message": "User not authenticated"
+                }), 401
+
+            # Check if already read
+            existing_read = LessonReadLog.query.filter_by(
+                lesson_id=lesson_id,
+                user_id=user_id
+            ).first()
+
+            if existing_read:
+                return jsonify({
+                    "success": True,
+                    "message": "Lesson already marked as read",
+                    "already_read": True
                 })
 
-            updates_data = []
-            for update in recent_updates:
-                # Ensure timezone is properly handled
-                timestamp = ensure_timezone(update.timestamp, UTC)
+            # Get client info
+            client_ip = request.environ.get('HTTP_X_FORWARDED_FOR',
+                request.environ.get('REMOTE_ADDR', 'Unknown')).split(',')[0].strip()
+            user_agent = request.headers.get('User-Agent', 'Unknown')
 
-                updates_data.append({
-                    "id": update.id,
-                    "name": update.name,
-                    "process": update.process,
-                    "message": update.message,
-                    "timestamp": timestamp.isoformat()
-                })
+            # Create new read log entry
+            read_log = LessonReadLog(
+                lesson_id=lesson_id,
+                user_id=user_id,
+                timestamp=now_utc(),
+                ip_address=client_ip,
+                user_agent=user_agent
+            )
+
+            db.session.add(read_log)
+            db.session.commit()
 
             return jsonify({
                 "success": True,
-                "updates": updates_data
+                "message": "Lesson marked as read successfully"
             })
+
         except Exception as e:
-            logger.error(f"Error in recent-updates: {str(e)}")
+            db.session.rollback()
+            logger.error(f"Error marking lesson as read: {str(e)}")
             return jsonify({
                 "success": False,
+                "message": "Failed to mark lesson as read"
+            }), 500
+
+    @app.route("/api/check-lesson-read/<int:lesson_id>")
+    def check_lesson_read(lesson_id):
+        """Check if a lesson has been read by the current user."""
+        try:
+            user_id = session.get("user_id")
+            if not user_id:
+                return jsonify({
+                    "read": False,
+                    "authenticated": False
+                })
+
+            # Check if read log exists
+            read_log = LessonReadLog.query.filter_by(
+                lesson_id=lesson_id,
+                user_id=user_id
+            ).first()
+
+            return jsonify({
+                "read": read_log is not None,
+                "authenticated": True,
+                "read_at": read_log.timestamp.isoformat() if read_log else None
+            })
+
+        except Exception as e:
+            logger.error(f"Error checking lesson read status: {str(e)}")
+            return jsonify({
+                "read": False,
                 "error": str(e)
             }), 500
 
@@ -1892,67 +2100,126 @@ def create_app(config_name=None):
             # Remove default sheet
             wb.remove(wb.active)
 
-            # Sheet 1: Read Logs - Simplified formatting
-            ws_readlogs = wb.create_sheet("Read Logs")
+            # Sheet 1: Update Read Logs
+            ws_update_readlogs = wb.create_sheet("Update Read Logs")
+            ws_update_readlogs.column_dimensions['A'].width = 10
+            ws_update_readlogs.column_dimensions['B'].width = 10
+            ws_update_readlogs.column_dimensions['C'].width = 15
+            ws_update_readlogs.column_dimensions['D'].width = 30
+            ws_update_readlogs.column_dimensions['E'].width = 20
+            ws_update_readlogs.column_dimensions['F'].width = 15
+            ws_update_readlogs.column_dimensions['G'].width = 50
+            ws_update_readlogs.column_dimensions['H'].width = 50
+            ws_update_readlogs.column_dimensions['I'].width = 20
+            ws_update_readlogs.column_dimensions['J'].width = 20
+            ws_update_readlogs.column_dimensions['K'].width = 30
 
-            # Basic column widths only
-            ws_readlogs.column_dimensions['A'].width = 10
-            ws_readlogs.column_dimensions['B'].width = 10
-            ws_readlogs.column_dimensions['C'].width = 15
-            ws_readlogs.column_dimensions['D'].width = 30
-            ws_readlogs.column_dimensions['E'].width = 20
-            ws_readlogs.column_dimensions['F'].width = 15
-            ws_readlogs.column_dimensions['G'].width = 50
-            ws_readlogs.column_dimensions['H'].width = 50
-            ws_readlogs.column_dimensions['I'].width = 20
-            ws_readlogs.column_dimensions['J'].width = 20
-            ws_readlogs.column_dimensions['K'].width = 30
-
-            # Simple header row without styling
-            ws_readlogs.append([
+            ws_update_readlogs.append([
                 'Read ID', 'Update ID', 'Reader Type', 'Reader Name', 'Read Time (IST)',
                 'IP Address', 'User Agent', 'Update Content', 'Process', 'Update Time (IST)', 'Reader Email'
             ])
 
-            # Get read logs data with user information
-            with app.app_context():
-                read_logs = db.session.query(
-                    ReadLog.id,
-                    ReadLog.update_id,
-                    ReadLog.user_id,
-                    ReadLog.guest_name,
-                    ReadLog.timestamp,
-                    ReadLog.ip_address,
-                    ReadLog.user_agent,
-                    Update.name.label('update_name'),
-                    Update.message.label('update_message'),
-                    Update.process,
-                    Update.timestamp.label('update_timestamp'),
-                    User.email.label('user_email'),
-                    User.display_name.label('user_display_name')
-                ).join(
-                    Update, ReadLog.update_id == Update.id
-                ).outerjoin(
-                    User, ReadLog.user_id == User.id
-                ).order_by(
-                    ReadLog.timestamp.desc()
-                ).all()  # Remove limit for full export
+            # Sheet 2: Lesson Read Logs
+            ws_lesson_readlogs = wb.create_sheet("Lesson Read Logs")
+            ws_lesson_readlogs.column_dimensions['A'].width = 10
+            ws_lesson_readlogs.column_dimensions['B'].width = 10
+            ws_lesson_readlogs.column_dimensions['C'].width = 15
+            ws_lesson_readlogs.column_dimensions['D'].width = 30
+            ws_lesson_readlogs.column_dimensions['E'].width = 20
+            ws_lesson_readlogs.column_dimensions['F'].width = 15
+            ws_lesson_readlogs.column_dimensions['G'].width = 50
+            ws_lesson_readlogs.column_dimensions['H'].width = 50
+            ws_lesson_readlogs.column_dimensions['I'].width = 20
+            ws_lesson_readlogs.column_dimensions['J'].width = 20
+            ws_lesson_readlogs.column_dimensions['K'].width = 30
 
-            for log in read_logs:
+            ws_lesson_readlogs.append([
+                'Read ID', 'Lesson ID', 'Reader Type', 'Reader Name', 'Read Time (IST)',
+                'IP Address', 'User Agent', 'Lesson Content', 'Department', 'Lesson Time (IST)', 'Reader Email'
+            ])
+
+            # Get read logs data with user information for updates and lessons
+            with app.app_context():
+                try:
+                    # Try to query new separate tables first
+                    update_read_logs = db.session.query(
+                        ReadLog.id,
+                        ReadLog.update_id,
+                        ReadLog.user_id,
+                        ReadLog.guest_name,
+                        ReadLog.timestamp,
+                        ReadLog.ip_address,
+                        ReadLog.user_agent,
+                        Update.name.label('update_name'),
+                        Update.message.label('update_message'),
+                        Update.process,
+                        Update.timestamp.label('update_timestamp'),
+                        User.email.label('user_email'),
+                        User.display_name.label('user_display_name')
+                    ).join(
+                        Update, ReadLog.update_id == Update.id
+                    ).outerjoin(
+                        User, ReadLog.user_id == User.id
+                    ).order_by(
+                        ReadLog.timestamp.desc()
+                    ).all()
+
+                    lesson_read_logs = db.session.query(
+                        LessonReadLog.id,
+                        LessonReadLog.lesson_id,
+                        LessonReadLog.user_id,
+                        LessonReadLog.guest_name,
+                        LessonReadLog.timestamp,
+                        LessonReadLog.ip_address,
+                        LessonReadLog.user_agent,
+                        LessonLearned.title.label('lesson_title'),
+                        LessonLearned.content.label('lesson_content'),
+                        LessonLearned.department.label('department'),
+                        LessonLearned.created_at.label('lesson_timestamp'),
+                        User.email.label('user_email'),
+                        User.display_name.label('user_display_name')
+                    ).join(
+                        LessonLearned, LessonReadLog.lesson_id == LessonLearned.id
+                    ).outerjoin(
+                        User, LessonReadLog.user_id == User.id
+                    ).order_by(
+                        LessonReadLog.timestamp.desc()
+                    ).all()
+
+                except Exception as e:
+                    logger.warning(f"New read log tables not available, falling back to legacy table: {e}")
+                    # Fallback to legacy read_logs table
+                    update_read_logs = []
+                    lesson_read_logs = []
+
+                    # Since we separated the tables, we should not use the legacy fallback
+                    # The new tables are already being used above, so this fallback should not be reached
+                    # But if it is, we'll create empty lists
+                    legacy_logs = []
+
+                    # Separate into update and lesson logs
+                    for log in legacy_logs:
+                        if log.update_id:
+                            update_read_logs.append(log)
+                        elif hasattr(log, 'lesson_id') and log.lesson_id:
+                            lesson_read_logs.append(log)
+
+            # Process update read logs
+            for log in update_read_logs:
                 try:
                     reader_type = 'Registered' if log.user_id else 'Guest'
                     reader_name = log.user_display_name if log.user_id else (log.guest_name or 'Anonymous Guest')
                     ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
-                    update_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
-                    
-                    # Combine update name and message for better context
-                    update_content = f"{log.update_name}\n{log.update_message[:200]}..."
-                    
+                    content_ist_timestamp = format_ist(log.update_timestamp, '%Y-%m-%d %H:%M:%S')
+
+                    # Combine content name and message for better context
+                    content_content = f"{log.update_name}\n{log.update_message[:200]}..."
+
                     # Format user agent for readability
                     user_agent = log.user_agent or ''
                     if len(user_agent) > 100:
                         user_agent = user_agent[:97] + "..."
-                    
+
                     row = [
                         log.id,
                         log.update_id,
@@ -1961,16 +2228,50 @@ def create_app(config_name=None):
                         ist_timestamp,
                         log.ip_address or 'N/A',
                         user_agent,
-                        update_content,
+                        content_content,
                         log.process or 'N/A',
-                        update_ist_timestamp,
+                        content_ist_timestamp,
                         log.user_email if log.user_id else 'N/A'
                     ]
-                    
-                    # Simple append without styling for faster export
-                    ws_readlogs.append(row)
+
+                    ws_update_readlogs.append(row)
                 except Exception as row_error:
-                    logger.error(f"Error processing read log entry {log.id if hasattr(log, 'id') else 'unknown'}: {str(row_error)}")
+                    logger.error(f"Error processing update read log entry {log.id}: {str(row_error)}")
+                    continue
+
+            # Process lesson read logs
+            for log in lesson_read_logs:
+                try:
+                    reader_type = 'Registered' if log.user_id else 'Guest'
+                    reader_name = log.user_display_name if log.user_id else (log.guest_name or 'Anonymous Guest')
+                    ist_timestamp = format_ist(log.timestamp, '%Y-%m-%d %H:%M:%S')
+                    content_ist_timestamp = format_ist(log.lesson_timestamp, '%Y-%m-%d %H:%M:%S')
+
+                    # Combine content name and message for better context
+                    content_content = f"{log.lesson_title}\n{log.lesson_content[:200]}..."
+
+                    # Format user agent for readability
+                    user_agent = log.user_agent or ''
+                    if len(user_agent) > 100:
+                        user_agent = user_agent[:97] + "..."
+
+                    row = [
+                        log.id,
+                        log.lesson_id,
+                        reader_type,
+                        reader_name,
+                        ist_timestamp,
+                        log.ip_address or 'N/A',
+                        user_agent,
+                        content_content,
+                        log.department or 'N/A',
+                        content_ist_timestamp,
+                        log.user_email if log.user_id else 'N/A'
+                    ]
+
+                    ws_lesson_readlogs.append(row)
+                except Exception as row_error:
+                    logger.error(f"Error processing lesson read log entry {log.id}: {str(row_error)}")
                     continue
 
             # Sheet 2: Activity Logs - Simplified
@@ -1978,6 +2279,19 @@ def create_app(config_name=None):
             ws_activity.append([
                 'Activity ID', 'User', 'Action', 'Entity Type', 'Entity Title',
                 'Timestamp (IST)', 'IP Address', 'User Agent', 'Details'
+            ])
+
+            # Sheet 3: Registered Users
+            ws_users = wb.create_sheet("Registered Users")
+            ws_users.column_dimensions['A'].width = 10
+            ws_users.column_dimensions['B'].width = 20
+            ws_users.column_dimensions['C'].width = 30
+            ws_users.column_dimensions['D'].width = 40
+            ws_users.column_dimensions['E'].width = 15
+            ws_users.column_dimensions['F'].width = 25
+
+            ws_users.append([
+                'User ID', 'Username', 'Display Name', 'Email', 'Role', 'Registration Date (IST)'
             ])
 
             # Get activity logs
@@ -2019,35 +2333,92 @@ def create_app(config_name=None):
                     logger.error(f"Error processing activity log entry {log.id}: {str(row_error)}")
                     continue
 
-            # Sheet 3: Summary Analytics - Simplified
+            # Process users data for Registered Users sheet
+            users = User.query.order_by(User.created_at.desc()).all()
+            for user in users:
+                try:
+                    ist_registration_date = format_ist(user.created_at, '%Y-%m-%d %H:%M:%S')
+
+                    row = [
+                        user.id,
+                        user.username,
+                        user.display_name,
+                        user.email or 'N/A',
+                        user.role,
+                        ist_registration_date
+                    ]
+
+                    ws_users.append(row)
+                except Exception as user_error:
+                    logger.error(f"Error processing user {user.id}: {str(user_error)}")
+                    continue
+
+            # Sheet 5: Summary Analytics - Simplified
             ws_analytics = wb.create_sheet("Summary Analytics")
             ws_analytics.append(['Metric', 'Value'])
 
             with app.app_context():
-                # Total reads
-                total_reads = db.session.query(func.count(ReadLog.id)).scalar()
+                try:
+                    # Try new tables first
+                    total_update_reads = db.session.query(func.count(ReadLog.id)).scalar()
+                    total_lesson_reads = db.session.query(func.count(LessonReadLog.id)).scalar()
+                    total_reads = total_update_reads + total_lesson_reads
 
-                # Unique readers (registered users)
-                unique_registered = db.session.query(func.count(func.distinct(ReadLog.user_id))).filter(
-                    ReadLog.user_id.isnot(None)
-                ).scalar()
+                    # Unique readers (registered users)
+                    unique_registered_updates = db.session.query(func.count(func.distinct(ReadLog.user_id))).filter(
+                        ReadLog.user_id.isnot(None)
+                    ).scalar()
+                    unique_registered_lessons = db.session.query(func.count(func.distinct(LessonReadLog.user_id))).filter(
+                        LessonReadLog.user_id.isnot(None)
+                    ).scalar()
+                    unique_registered = max(unique_registered_updates or 0, unique_registered_lessons or 0)
 
-                # Unique guest readers
-                unique_guests = db.session.query(func.count(func.distinct(ReadLog.guest_name))).filter(
-                    ReadLog.user_id.is_(None)
-                ).scalar()
+                    # Unique guest readers
+                    unique_guests_updates = db.session.query(func.count(func.distinct(ReadLog.guest_name))).filter(
+                        ReadLog.user_id.is_(None)
+                    ).scalar()
+                    unique_guests_lessons = db.session.query(func.count(func.distinct(LessonReadLog.guest_name))).filter(
+                        LessonReadLog.user_id.is_(None)
+                    ).scalar()
+                    unique_guests = (unique_guests_updates or 0) + (unique_guests_lessons or 0)
 
-                # Total registered vs guest reads
-                registered_reads = db.session.query(func.count(ReadLog.id)).filter(
-                    ReadLog.user_id.isnot(None)
-                ).scalar()
+                    # Total registered vs guest reads
+                    registered_reads = (db.session.query(func.count(ReadLog.id)).filter(
+                        ReadLog.user_id.isnot(None)
+                    ).scalar() or 0) + (db.session.query(func.count(LessonReadLog.id)).filter(
+                        LessonReadLog.user_id.isnot(None)
+                    ).scalar() or 0)
 
-                guest_reads = db.session.query(func.count(ReadLog.id)).filter(
-                    ReadLog.user_id.is_(None)
-                ).scalar()
+                    guest_reads = (db.session.query(func.count(ReadLog.id)).filter(
+                        ReadLog.user_id.is_(None)
+                    ).scalar() or 0) + (db.session.query(func.count(LessonReadLog.id)).filter(
+                        LessonReadLog.user_id.is_(None)
+                    ).scalar() or 0)
 
-                # Total updates
+                except Exception as e:
+                    logger.warning(f"New read log tables not available for analytics, using legacy table: {e}")
+                    # Fallback to legacy read_logs table - tables are separated now, this should not be reached
+                    total_reads = 0
+
+                    unique_registered = db.session.query(func.count(func.distinct(ReadLog.user_id))).filter(
+                        ReadLog.user_id.isnot(None)
+                    ).scalar()
+
+                    unique_guests = db.session.query(func.count(func.distinct(ReadLog.guest_name))).filter(
+                        ReadLog.user_id.is_(None)
+                    ).scalar()
+
+                    registered_reads = db.session.query(func.count(ReadLog.id)).filter(
+                        ReadLog.user_id.isnot(None)
+                    ).scalar()
+
+                    guest_reads = db.session.query(func.count(ReadLog.id)).filter(
+                        ReadLog.user_id.is_(None)
+                    ).scalar()
+
+                # Total updates and lessons
                 total_updates = db.session.query(func.count(Update.id)).scalar()
+                total_lessons = db.session.query(func.count(LessonLearned.id)).scalar()
 
             analytics_data = [
                 ['Total Reads', total_reads or 0],
@@ -2055,13 +2426,14 @@ def create_app(config_name=None):
                 ['Unique Guest Readers', unique_guests or 0],
                 ['Registered User Reads', registered_reads or 0],
                 ['Guest User Reads', guest_reads or 0],
-                ['Total Updates', total_updates or 0]
+                ['Total Updates', total_updates or 0],
+                ['Total Lessons Learned', total_lessons or 0]
             ]
 
             for row in analytics_data:
                 ws_analytics.append(row)
 
-            # Sheet 4: Top Performers
+            # Sheet 6: Top Performers
             ws_performers = wb.create_sheet("Top Performers")
 
             # Most active readers section - Simplified
@@ -2069,29 +2441,88 @@ def create_app(config_name=None):
             ws_performers.append(['Reader Name', 'Reader Type', 'Total Reads'])
 
             with app.app_context():
-                # Top registered readers
-                top_registered = db.session.query(
-                    User.display_name,
-                    func.count(ReadLog.id).label('read_count')
-                ).join(
-                    ReadLog, User.id == ReadLog.user_id
-                ).group_by(
-                    User.id, User.display_name
-                ).order_by(
-                    func.count(ReadLog.id).desc()
-                ).limit(10).all()
+                try:
+                    # Top registered readers (both updates and lessons)
+                    top_registered_updates = db.session.query(
+                        User.display_name,
+                        func.count(ReadLog.id).label('read_count')
+                    ).join(
+                        ReadLog, User.id == ReadLog.user_id
+                    ).group_by(
+                        User.id, User.display_name
+                    ).all()
 
-                # Top guest readers
-                top_guests = db.session.query(
-                    ReadLog.guest_name,
-                    func.count(ReadLog.id).label('read_count')
-                ).filter(
-                    ReadLog.user_id.is_(None)
-                ).group_by(
-                    ReadLog.guest_name
-                ).order_by(
-                    func.count(ReadLog.id).desc()
-                ).limit(10).all()
+                    top_registered_lessons = db.session.query(
+                        User.display_name,
+                        func.count(LessonReadLog.id).label('read_count')
+                    ).join(
+                        LessonReadLog, User.id == LessonReadLog.user_id
+                    ).group_by(
+                        User.id, User.display_name
+                    ).all()
+
+                    # Combine and aggregate
+                    from collections import defaultdict
+                    combined_registered = defaultdict(int)
+                    for name, count in top_registered_updates:
+                        combined_registered[name] += count
+                    for name, count in top_registered_lessons:
+                        combined_registered[name] += count
+
+                    top_registered = sorted(combined_registered.items(), key=lambda x: x[1], reverse=True)[:10]
+
+                    # Top guest readers (both updates and lessons)
+                    top_guests_updates = db.session.query(
+                        ReadLog.guest_name,
+                        func.count(ReadLog.id).label('read_count')
+                    ).filter(
+                        ReadLog.user_id.is_(None)
+                    ).group_by(
+                        ReadLog.guest_name
+                    ).all()
+
+                    top_guests_lessons = db.session.query(
+                        LessonReadLog.guest_name,
+                        func.count(LessonReadLog.id).label('read_count')
+                    ).filter(
+                        LessonReadLog.user_id.is_(None)
+                    ).group_by(
+                        LessonReadLog.guest_name
+                    ).all()
+
+                    # Combine and aggregate
+                    combined_guests = defaultdict(int)
+                    for name, count in top_guests_updates:
+                        if name: combined_guests[name] += count
+                    for name, count in top_guests_lessons:
+                        if name: combined_guests[name] += count
+
+                    top_guests = sorted(combined_guests.items(), key=lambda x: x[1], reverse=True)[:10]
+
+                except Exception as e:
+                    logger.warning(f"New read log tables not available for top performers, using legacy table: {e}")
+                    # Fallback to legacy read_logs table - tables are separated now, this should not be reached
+                    top_registered = db.session.query(
+                        User.display_name,
+                        func.count(ReadLog.id).label('read_count')
+                    ).join(
+                        ReadLog, User.id == ReadLog.user_id
+                    ).group_by(
+                        User.id, User.display_name
+                    ).order_by(
+                        func.count(ReadLog.id).desc()
+                    ).limit(10).all()
+
+                    top_guests = db.session.query(
+                        ReadLog.guest_name,
+                        func.count(ReadLog.id).label('read_count')
+                    ).filter(
+                        ReadLog.user_id.is_(None)
+                    ).group_by(
+                        ReadLog.guest_name
+                    ).order_by(
+                        func.count(ReadLog.id).desc()
+                    ).limit(10).all()
 
             for reader, count in top_registered:
                 ws_performers.append([reader, 'Registered', count])
@@ -2105,69 +2536,186 @@ def create_app(config_name=None):
             ws_performers.append(['Update Title', 'Process', 'Total Reads'])
 
             with app.app_context():
-                top_updates = db.session.query(
-                    Update.name,
-                    Update.process,
-                    func.count(ReadLog.id).label('read_count')
-                ).outerjoin(
-                    ReadLog, Update.id == ReadLog.update_id
-                ).group_by(
-                    Update.id, Update.name, Update.process
-                ).order_by(
-                    func.count(ReadLog.id).desc()
-                ).limit(10).all()
+                try:
+                    # Top updates
+                    top_updates = db.session.query(
+                        Update.name.label('title'),
+                        Update.process.label('category'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Update').label('content_type')
+                    ).outerjoin(
+                        ReadLog, Update.id == ReadLog.update_id
+                    ).group_by(
+                        Update.id, Update.name, Update.process
+                    ).all()
 
-            for title, process, count in top_updates:
-                ws_performers.append([title, process, count])
+                    # Top lessons
+                    top_lessons = db.session.query(
+                        LessonLearned.title.label('title'),
+                        LessonLearned.department.label('category'),
+                        func.count(LessonReadLog.id).label('read_count'),
+                        db.literal('Lesson').label('content_type')
+                    ).outerjoin(
+                        LessonReadLog, LessonLearned.id == LessonReadLog.lesson_id
+                    ).group_by(
+                        LessonLearned.id, LessonLearned.title, LessonLearned.department
+                    ).all()
 
-            # Sheet 5: Engagement Metrics by Process - Simplified
+                    # Combine and get top 10
+                    top_content = sorted(
+                        [(title, category, count, content_type) for title, category, count, content_type in top_updates] +
+                        [(title, category, count, content_type) for title, category, count, content_type in top_lessons],
+                        key=lambda x: x[2], reverse=True
+                    )[:10]
+
+                except Exception as e:
+                    logger.warning(f"New read log tables not available for popular content, using legacy table: {e}")
+                    # Fallback to legacy read_logs table - tables are separated now, this should not be reached
+                    top_updates = db.session.query(
+                        Update.name.label('title'),
+                        Update.process.label('category'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Update').label('content_type')
+                    ).outerjoin(
+                        ReadLog, Update.id == ReadLog.update_id
+                    ).group_by(
+                        Update.id, Update.name, Update.process
+                    ).all()
+
+                    top_lessons = db.session.query(
+                        LessonLearned.title.label('title'),
+                        LessonLearned.department.label('category'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Lesson').label('content_type')
+                    ).outerjoin(
+                        ReadLog, LessonLearned.id == ReadLog.lesson_id
+                    ).group_by(
+                        LessonLearned.id, LessonLearned.title, LessonLearned.department
+                    ).all()
+
+                    # Combine and get top 10
+                    top_content = sorted(
+                        [(title, category, count, content_type) for title, category, count, content_type in top_updates] +
+                        [(title, category, count, content_type) for title, category, count, content_type in top_lessons],
+                        key=lambda x: x[2], reverse=True
+                    )[:10]
+
+            for title, category, count, content_type in top_content:
+                ws_performers.append([f"{content_type}: {title}", category or 'N/A', count])
+
+            # Sheet 7: Engagement Metrics by Process - Simplified
             ws_engagement = wb.create_sheet("Engagement by Process")
             ws_engagement.append(['Process', 'Total Updates', 'Total Reads', 'Unique Readers', 'Avg Reads per Update'])
 
             with app.app_context():
-                # Get process metrics with proper unique reader counting
-                process_metrics = db.session.query(
-                    Update.process,
-                    func.count(func.distinct(Update.id)).label('update_count'),
-                    func.count(ReadLog.id).label('read_count')
-                ).outerjoin(
-                    ReadLog, Update.id == ReadLog.update_id
-                ).group_by(
-                    Update.process
-                ).order_by(
-                    Update.process
-                ).all()
+                try:
+                    # Get process metrics for updates
+                    update_metrics = db.session.query(
+                        Update.process.label('category'),
+                        func.count(func.distinct(Update.id)).label('content_count'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Update').label('content_type')
+                    ).outerjoin(
+                        ReadLog, Update.id == ReadLog.update_id
+                    ).group_by(
+                        Update.process
+                    ).all()
 
-                # Get unique readers per process
-                process_unique_readers = {}
-                for process_name, _, _ in process_metrics:
-                    # Count unique registered users for this process
-                    registered_count = db.session.query(
-                        func.count(func.distinct(ReadLog.user_id))
-                    ).join(
-                        Update, ReadLog.update_id == Update.id
-                    ).filter(
-                        Update.process == process_name,
-                        ReadLog.user_id.isnot(None)
-                    ).scalar()
+                    # Get department metrics for lessons
+                    lesson_metrics = db.session.query(
+                        LessonLearned.department.label('category'),
+                        func.count(func.distinct(LessonLearned.id)).label('content_count'),
+                        func.count(LessonReadLog.id).label('read_count'),
+                        db.literal('Lesson').label('content_type')
+                    ).outerjoin(
+                        LessonReadLog, LessonLearned.id == LessonReadLog.lesson_id
+                    ).group_by(
+                        LessonLearned.department
+                    ).all()
 
-                    # Count unique guest users for this process
-                    guest_count = db.session.query(
-                        func.count(func.distinct(ReadLog.guest_name))
-                    ).join(
-                        Update, ReadLog.update_id == Update.id
-                    ).filter(
-                        Update.process == process_name,
-                        ReadLog.user_id.is_(None),
-                        ReadLog.guest_name.isnot(None)
-                    ).scalar()
+                    # Combine both
+                    all_metrics = update_metrics + lesson_metrics
 
-                    process_unique_readers[process_name] = (registered_count or 0) + (guest_count or 0)
+                except Exception as e:
+                    logger.warning(f"New read log tables not available for engagement metrics, using legacy table: {e}")
+                    # Fallback to legacy read_logs table - tables are separated now, this should not be reached
+                    update_metrics = db.session.query(
+                        Update.process.label('category'),
+                        func.count(func.distinct(Update.id)).label('content_count'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Update').label('content_type')
+                    ).outerjoin(
+                        ReadLog, Update.id == ReadLog.update_id
+                    ).group_by(
+                        Update.process
+                    ).all()
 
-            for process, update_count, read_count in process_metrics:
-                unique_readers = process_unique_readers.get(process, 0)
-                avg_reads = round(read_count / update_count, 2) if update_count > 0 else 0
-                ws_engagement.append([process, update_count, read_count, unique_readers, avg_reads])
+                    lesson_metrics = db.session.query(
+                        LessonLearned.department.label('category'),
+                        func.count(func.distinct(LessonLearned.id)).label('content_count'),
+                        func.count(ReadLog.id).label('read_count'),
+                        db.literal('Lesson').label('content_type')
+                    ).outerjoin(
+                        ReadLog, LessonLearned.id == ReadLog.lesson_id
+                    ).group_by(
+                        LessonLearned.department
+                    ).all()
+
+                    # Combine both
+                    all_metrics = update_metrics + lesson_metrics
+
+                # Get unique readers per category
+                category_unique_readers = {}
+                for category, _, _, content_type in all_metrics:
+                    if content_type == 'Update':
+                        # Count unique registered users for this process
+                        registered_count = db.session.query(
+                            func.count(func.distinct(ReadLog.user_id))
+                        ).join(
+                            Update, ReadLog.update_id == Update.id
+                        ).filter(
+                            Update.process == category,
+                            ReadLog.user_id.isnot(None)
+                        ).scalar()
+
+                        # Count unique guest users for this process
+                        guest_count = db.session.query(
+                            func.count(func.distinct(ReadLog.guest_name))
+                        ).join(
+                            Update, ReadLog.update_id == Update.id
+                        ).filter(
+                            Update.process == category,
+                            ReadLog.user_id.is_(None),
+                            ReadLog.guest_name.isnot(None)
+                        ).scalar()
+                    else:  # Lesson
+                        # Count unique registered users for this department
+                        registered_count = db.session.query(
+                            func.count(func.distinct(LessonReadLog.user_id))
+                        ).join(
+                            LessonLearned, LessonReadLog.lesson_id == LessonLearned.id
+                        ).filter(
+                            LessonLearned.department == category,
+                            LessonReadLog.user_id.isnot(None)
+                        ).scalar()
+
+                        # Count unique guest users for this department
+                        guest_count = db.session.query(
+                            func.count(func.distinct(LessonReadLog.guest_name))
+                        ).join(
+                            LessonLearned, LessonReadLog.lesson_id == LessonLearned.id
+                        ).filter(
+                            LessonLearned.department == category,
+                            LessonReadLog.user_id.is_(None),
+                            LessonReadLog.guest_name.isnot(None)
+                        ).scalar()
+
+                    category_unique_readers[category] = (registered_count or 0) + (guest_count or 0)
+
+            for category, content_count, read_count, content_type in all_metrics:
+                unique_readers = category_unique_readers.get(category, 0)
+                avg_reads = round(read_count / content_count, 2) if content_count > 0 else 0
+                ws_engagement.append([f"{content_type}: {category or 'N/A'}", content_count, read_count, unique_readers, avg_reads])
 
             # Skip auto-adjust column widths for faster export
 
@@ -2534,7 +3082,7 @@ def create_app(config_name=None):
             }
 
             # Export users
-            users = User.query.all()
+            users = User.query.order_by(User.created_at.desc()).all()
             export_data["data"]["users"] = [
                 {
                     "id": user.id,
@@ -2542,6 +3090,7 @@ def create_app(config_name=None):
                     "display_name": user.display_name,
                     "email": user.email,
                     "role": user.role,
+                    "registration_date_ist": format_ist(getattr(user, 'created_at', None), '%Y-%m-%d %H:%M:%S') if getattr(user, 'created_at', None) else None,
                     "created_at": getattr(user, 'created_at', None).isoformat() if getattr(user, 'created_at', None) else None
                 } for user in users
             ]
@@ -2558,9 +3107,9 @@ def create_app(config_name=None):
                 } for update in updates
             ]
 
-            # Export read logs
-            read_logs = ReadLog.query.all()
-            export_data["data"]["read_logs"] = [
+            # Export update read logs
+            update_read_logs = ReadLog.query.all()
+            export_data["data"]["update_read_logs"] = [
                 {
                     "id": log.id,
                     "update_id": log.update_id,
@@ -2569,7 +3118,21 @@ def create_app(config_name=None):
                     "timestamp": log.timestamp.isoformat(),
                     "ip_address": log.ip_address,
                     "user_agent": log.user_agent
-                } for log in read_logs
+                } for log in update_read_logs
+            ]
+
+            # Export lesson read logs
+            lesson_read_logs = LessonReadLog.query.all()
+            export_data["data"]["lesson_read_logs"] = [
+                {
+                    "id": log.id,
+                    "lesson_id": log.lesson_id,
+                    "user_id": log.user_id,
+                    "guest_name": log.guest_name,
+                    "timestamp": log.timestamp.isoformat(),
+                    "ip_address": log.ip_address,
+                    "user_agent": log.user_agent
+                } for log in lesson_read_logs
             ]
 
             # Export SOP summaries
@@ -2650,20 +3213,21 @@ def create_app(config_name=None):
 
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 # Export users
-                users = User.query.all()
+                users = User.query.order_by(User.created_at.desc()).all()
                 if users:
                     user_output = StringIO()
                     writer = csv.writer(user_output)
-                    writer.writerow(['ID', 'Username', 'Display Name', 'Email', 'Role', 'Created At'])
+                    writer.writerow(['ID', 'Username', 'Display Name', 'Email', 'Role', 'Registration Date (IST)'])
                     for user in users:
                         created_at_value = getattr(user, 'created_at', None)
+                        ist_registration_date = format_ist(created_at_value, '%Y-%m-%d %H:%M:%S') if created_at_value else 'N/A'
                         writer.writerow([
                             user.id,
                             user.username,
                             user.display_name,
-                            user.email,
+                            user.email or 'N/A',
                             user.role,
-                            created_at_value.isoformat() if created_at_value else ''
+                            ist_registration_date
                         ])
                     zip_file.writestr('users.csv', user_output.getvalue())
 
@@ -2683,13 +3247,13 @@ def create_app(config_name=None):
                         ])
                     zip_file.writestr('updates.csv', update_output.getvalue())
 
-                # Export read logs
-                read_logs = ReadLog.query.all()
-                if read_logs:
-                    read_log_output = StringIO()
-                    writer = csv.writer(read_log_output)
+                # Export update read logs
+                update_read_logs = ReadLog.query.all()
+                if update_read_logs:
+                    update_read_log_output = StringIO()
+                    writer = csv.writer(update_read_log_output)
                     writer.writerow(['ID', 'Update ID', 'User ID', 'Guest Name', 'Timestamp', 'IP Address', 'User Agent'])
-                    for log in read_logs:
+                    for log in update_read_logs:
                         writer.writerow([
                             log.id,
                             log.update_id,
@@ -2699,7 +3263,25 @@ def create_app(config_name=None):
                             log.ip_address,
                             log.user_agent
                         ])
-                    zip_file.writestr('read_logs.csv', read_log_output.getvalue())
+                    zip_file.writestr('update_read_logs.csv', update_read_log_output.getvalue())
+
+                # Export lesson read logs
+                lesson_read_logs = LessonReadLog.query.all()
+                if lesson_read_logs:
+                    lesson_read_log_output = StringIO()
+                    writer = csv.writer(lesson_read_log_output)
+                    writer.writerow(['ID', 'Lesson ID', 'User ID', 'Guest Name', 'Timestamp', 'IP Address', 'User Agent'])
+                    for log in lesson_read_logs:
+                        writer.writerow([
+                            log.id,
+                            log.lesson_id,
+                            log.user_id,
+                            log.guest_name,
+                            log.timestamp.isoformat(),
+                            log.ip_address,
+                            log.user_agent
+                        ])
+                    zip_file.writestr('lesson_read_logs.csv', lesson_read_log_output.getvalue())
 
                 # Export SOP summaries
                 sops = SOPSummary.query.all()

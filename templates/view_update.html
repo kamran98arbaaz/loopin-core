@@ -39,7 +39,7 @@
       <!-- Update Content -->
       <div class="p-6">
         <div class="prose max-w-none">
-          <p class="text-gray-700 text-lg leading-relaxed">{{ update.message }}</p>
+          <div class="text-gray-700 text-lg leading-relaxed">{{ update.message | safe }}</div>
         </div>
 
         <!-- Update Metadata -->

@@ -2,6 +2,11 @@
 {% block title %}Edit SOP Summary – {{ app_name }}{% endblock %}
 
 {% block head %}
+  <!-- Quill.js Rich Text Editor -->
+  <link href="{{ url_for('static', filename='css/quill.snow.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', filename='js/quill.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/rich_text_editor.js') }}"></script>
+
 <style>
   .edit-container {
     max-width: 900px;
@@ -287,14 +292,8 @@
 
       <div class="form-group">
         <label for="summary_text" class="form-label required">Summary</label>
-        <textarea
-          id="summary_text"
-          name="summary_text"
-          required
-          class="form-textarea large"
-          placeholder="Provide a comprehensive summary of the standard operating procedure..."
-        >{{ sop.summary_text }}</textarea>
-        <div class="form-help">Describe the key steps, requirements, and important details</div>
+        <div id="summary_text-editor" class="form-textarea large" style="min-height: 200px;"></div>
+        <div class="form-help">Describe the key steps, requirements, and important details. Use the toolbar for formatting.</div>
       </div>
     </div>
 
@@ -364,4 +363,19 @@
     </form>
   </div>
 </div>
+
+<script>
+  // Populate the rich text editor with existing content
+  document.addEventListener('DOMContentLoaded', function() {
+    // Wait for the rich text editor to initialize
+    setTimeout(() => {
+      if (window.richTextEditor && window.richTextEditor.editors.has('summary_text')) {
+        const existingContent = `{{ sop.summary_text | tojson }}`;
+        if (existingContent && existingContent !== 'null') {
+          window.richTextEditor.setContent('summary_text', existingContent);
+        }
+      }
+    }, 100);
+  });
+</script>
 {% endblock %}
